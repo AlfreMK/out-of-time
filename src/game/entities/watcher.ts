@@ -1,0 +1,363 @@
+import type { Facing, WatcherKind, WatcherSpec } from '../../eras/types.ts';
+import { angleDiff } from '../../engine/random.ts';
+import { findPath } from '../pathfinding.ts';
+import { TILE, tileCenter, type TilePoint } from '../tilemap.ts';
+import type { World } from '../world.ts';
+import { Entity } from './entity.ts';
+
+type State = 'pause' | 'patrol' | 'investigate' | 'look' | 'return' | 'eat';
+
+const FACING_ANGLE: Record<Facing, number> = {
+  right: 0,
+  down: Math.PI / 2,
+  left: Math.PI,
+  up: -Math.PI / 2,
+};
+
+interface KindTuning {
+  speed: number;
+  range: number;
+  fov: number;
+  wait: number;
+  sweep: number;
+  /** How fast suspicion fills while the player is in view. */
+  alertness: number;
+  /** Multiplier on how far away noises are heard (0 = deaf). */
+  hearing: number;
+  height: number;
+}
+
+const TUNING: Record<WatcherKind, KindTuning> = {
+  // Dakotaraptor: fast, sharp-eyed pack hunter with good hearing.
+  raptor: { speed: 52, range: 100, fov: 1.35, wait: 1.0, sweep: 0.8, alertness: 1.5, hearing: 1.4, height: 22 },
+  guard: { speed: 32, range: 76, fov: 1.2, wait: 2.0, sweep: 0.6, alertness: 1, hearing: 1, height: 19 },
+  soldier: { speed: 34, range: 84, fov: 1.2, wait: 2.0, sweep: 0.6, alertness: 1.1, hearing: 1, height: 19 },
+  rider: { speed: 66, range: 92, fov: 1.1, wait: 1.2, sweep: 0.5, alertness: 1.2, hearing: 0.9, height: 30 },
+  dog: { speed: 55, range: 60, fov: 1.5, wait: 0, sweep: 1.1, alertness: 1.2, hearing: 1.2, height: 10 },
+  camera: { speed: 0, range: 104, fov: 0.8, wait: 0, sweep: 0.9, alertness: 1.3, hearing: 0, height: 30 },
+  drone: { speed: 50, range: 86, fov: 1.0, wait: 1.2, sweep: 1.0, alertness: 1.2, hearing: 1, height: 26 },
+  bot: { speed: 30, range: 82, fov: 1.0, wait: 2.0, sweep: 0.5, alertness: 1.1, hearing: 1, height: 20 },
+};
+
+/** Default speech bubbles. Guards speak through Elias's translator earpiece, hence the accent. */
+const BARKS: Partial<Record<WatcherKind, { suspicious: string[]; investigate: string[]; giveUp: string[] }>> = {
+  guard: {
+    suspicious: ['Hm? Who goes zere?', 'Was ist das?', 'Did somesing move?'],
+    investigate: ['I vill take a look.', 'Show yourself!', 'Who is making zis noise?'],
+    giveUp: ['Ach, nur der Wind.', 'Bah. Ze cat again.', 'Nozing. Back to my post.'],
+  },
+  soldier: {
+    suspicious: ['¿Quién anda ahí?', '¿Qué fue eso?', '¿Hay alguien?'],
+    investigate: ['¡Voy a ver!', '¡Alto, en nombre del Rey!', '¡Sal de ahí!'],
+    giveUp: ['Habrá sido un zorro.', 'Nada. Malditos bosques.', 'Será el viento.'],
+  },
+  rider: {
+    suspicious: ['¿Qué se mueve allí?'],
+    investigate: ['¡Vamos, caballo!'],
+    giveUp: ['Nada. Sigamos.'],
+  },
+  camera: {
+    suspicious: ['MOTION DETECTED'],
+    investigate: [],
+    giveUp: ['SCAN COMPLETE'],
+  },
+  drone: {
+    suspicious: ['ANOMALY?'],
+    investigate: ['INVESTIGATING NOISE SOURCE'],
+    giveUp: ['FALSE ALARM. RESUMING PATROL'],
+  },
+  bot: {
+    suspicious: ['HALT. IDENTIFY YOURSELF.'],
+    investigate: ['SCANNING SECTOR.'],
+    giveUp: ['NO THREAT FOUND.'],
+  },
+};
+
+/** Distance under which being "hidden" stops working — they'd bump into you. */
+const POINT_BLANK = 18;
+const TOUCH = 11;
+
+/** Anything that hears food lands near it and eats it (bread for the dog). */
+export interface Food {
+  x: number;
+  y: number;
+  removed: boolean;
+  consume(): void;
+}
+
+/** A patrolling (or posted) watcher with a vision cone: dinosaurs, guards, soldiers, robots. */
+export class Watcher extends Entity {
+  readonly kind: WatcherKind;
+  readonly spec: WatcherSpec;
+  suspicion = 0;
+  angle: number;
+  state: State = 'pause';
+  walking = false;
+  /** Seconds left of being switched off (hacked cameras and robots). */
+  disabledTime = 0;
+  /** Current speech bubble. */
+  bark: { text: string; time: number } | null = null;
+  readonly range: number;
+  readonly fov: number;
+  private readonly tuning: KindTuning;
+  private readonly route: TilePoint[];
+  private readonly postAngle: number;
+  private readonly speed: number;
+  private readonly wait: number;
+  private readonly sweep: number;
+  private routeIndex = 0;
+  private path: TilePoint[] = [];
+  private timer = 0;
+  private lookCenter: number;
+  private food: Food | null = null;
+  private barkCooldown = 0;
+
+  constructor(spec: WatcherSpec, route: TilePoint[]) {
+    super();
+    this.kind = spec.kind;
+    this.spec = spec;
+    this.route = route;
+    this.tuning = TUNING[spec.kind];
+    this.speed = spec.speed ?? this.tuning.speed;
+    this.range = spec.range ?? this.tuning.range;
+    this.fov = spec.fov ?? this.tuning.fov;
+    this.wait = spec.wait ?? this.tuning.wait;
+    this.sweep = spec.sweep ?? this.tuning.sweep;
+    this.postAngle = FACING_ANGLE[spec.facing ?? 'down'];
+    this.angle = this.postAngle;
+    this.lookCenter = this.postAngle;
+    this.height = this.tuning.height;
+    this.reset();
+  }
+
+  override reset(): void {
+    const start = tileCenter(this.route[0]);
+    this.x = start.x;
+    this.y = start.y + 4;
+    this.routeIndex = 0;
+    this.path = [];
+    this.state = 'pause';
+    this.timer = 0;
+    this.suspicion = 0;
+    this.food = null;
+    this.bark = null;
+    this.angle = this.route.length > 1 ? this.angleToward(this.route[1]) : this.postAngle;
+    this.lookCenter = this.angle;
+  }
+
+  get isStationary(): boolean {
+    return this.route.length === 1 || this.kind === 'camera';
+  }
+
+  get disabled(): boolean {
+    return this.disabledTime > 0;
+  }
+
+  /** Vision is off while eating or switched off. */
+  get watching(): boolean {
+    return this.state !== 'eat' && !this.disabled;
+  }
+
+  /** Eating and standing still (the food is reached). */
+  get isEating(): boolean {
+    return this.state === 'eat' && this.path.length === 0;
+  }
+
+  override update(dt: number, world: World): void {
+    this.updateEmote(dt);
+    this.walking = false;
+    if (this.bark) {
+      this.bark.time -= dt;
+      if (this.bark.time <= 0) this.bark = null;
+    }
+    if (world.controlsLocked) return;
+    this.barkCooldown = Math.max(0, this.barkCooldown - dt);
+    if (this.disabledTime > 0) {
+      this.disabledTime -= dt;
+      this.suspicion = 0;
+      if (this.disabledTime <= 0) this.say('giveUp');
+      return;
+    }
+
+    const player = world.hero;
+    const dist = Math.hypot(player.x - this.x, player.y - this.y);
+    const god = world.game.godMode;
+    if (!god && this.watching && this.kind !== 'camera' && dist < TOUCH && !player.isHopping) {
+      world.caught(this, this.spec.caught);
+      return;
+    }
+
+    const sawBefore = this.suspicion > 0;
+    if (!god && this.watching && this.canSee(world)) {
+      const closeness = 1 - dist / this.range;
+      this.suspicion += dt * (1.2 + closeness * 3) * this.tuning.alertness;
+      this.turnToward(Math.atan2(player.y - this.y, player.x - this.x), dt * 2);
+      if (!sawBefore) {
+        world.game.audio.sfx(this.isMachine ? 'beep' : 'suspect');
+        this.emote('question', 0.8);
+        this.say('suspicious');
+      }
+      if (this.suspicion >= 1) world.caught(this, this.spec.caught);
+      // Freeze in place while staring.
+      return;
+    }
+    this.suspicion = Math.max(0, this.suspicion - dt * 0.35);
+    this.think(dt, world);
+  }
+
+  private get isMachine(): boolean {
+    return this.kind === 'camera' || this.kind === 'drone' || this.kind === 'bot';
+  }
+
+  private say(kind: 'suspicious' | 'investigate' | 'giveUp'): void {
+    const lines = this.spec.barks?.[kind] ?? BARKS[this.kind]?.[kind];
+    if (!lines || lines.length === 0 || this.barkCooldown > 0) return;
+    this.bark = { text: lines[Math.floor(Math.random() * lines.length)], time: 2.2 };
+    this.barkCooldown = 1.2;
+  }
+
+  private think(dt: number, world: World): void {
+    switch (this.state) {
+      case 'pause': {
+        this.timer += dt;
+        const center = this.isStationary ? this.postAngle : this.lookCenter;
+        this.turnToward(center + Math.sin(this.timer * 1.3) * this.sweep, dt);
+        if (!this.isStationary && this.timer >= this.wait) {
+          this.routeIndex = (this.routeIndex + 1) % this.route.length;
+          this.goTo(this.route[this.routeIndex], world);
+          this.state = 'patrol';
+        }
+        break;
+      }
+      case 'patrol':
+      case 'investigate':
+      case 'return':
+        if (this.followPath(dt)) {
+          this.timer = 0;
+          this.lookCenter = this.angle;
+          if (this.state === 'investigate') this.state = 'look';
+          else this.state = 'pause';
+        }
+        break;
+      case 'look':
+        this.timer += dt;
+        this.turnToward(this.lookCenter + Math.sin(this.timer * 2) * 1.2, dt);
+        if (this.timer > 2.6) {
+          this.say('giveUp');
+          this.goTo(this.route[this.routeIndex], world);
+          this.state = 'return';
+        }
+        break;
+      case 'eat':
+        if (!this.food || this.food.removed) {
+          this.food = null;
+          this.goTo(this.route[this.routeIndex], world);
+          this.state = 'return';
+          break;
+        }
+        if (this.followPath(dt)) {
+          this.timer -= dt;
+          this.animTime += dt * 0.5;
+          if (this.timer <= 0) {
+            this.food.consume();
+            this.food = null;
+            this.goTo(this.route[this.routeIndex], world);
+            this.state = 'return';
+          }
+        }
+        break;
+    }
+  }
+
+  /** Reacts to sounds. Dogs only care about food; cameras are deaf; everyone else investigates. */
+  hear(x: number, y: number, radius: number, kind: 'step' | 'noise' | 'food', world: World, food?: Food): void {
+    if (this.state === 'eat' || this.disabled || this.tuning.hearing === 0) return;
+    if (Math.hypot(this.x - x, this.y - y) > radius * this.tuning.hearing) return;
+    if (kind === 'food') {
+      if (this.kind !== 'dog' || !food) return;
+      this.food = food;
+      this.timer = 7;
+      this.goTo(this.tileAt(food.x, food.y), world);
+      this.state = 'eat';
+      this.emote('heart', 1.5);
+      world.game.audio.sfx('chirp');
+      return;
+    }
+    const target = this.tileAt(x, y);
+    if (this.kind === 'dog') {
+      this.lookCenter = Math.atan2(y - this.y, x - this.x);
+      this.timer = 0;
+      this.state = 'look';
+      return;
+    }
+    if (this.state !== 'investigate') {
+      this.emote('question', 1);
+      world.game.audio.sfx(this.isMachine ? 'beep' : 'suspect');
+      this.say('investigate');
+    }
+    this.goTo(target, world);
+    this.state = this.path.length > 0 ? 'investigate' : 'look';
+    this.timer = 0;
+    this.lookCenter = Math.atan2(y - this.y, x - this.x);
+  }
+
+  canSee(world: World): boolean {
+    const player = world.hero;
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > this.range) return false;
+    if (player.hidden && dist > POINT_BLANK) return false;
+    if (Math.abs(angleDiff(this.angle, Math.atan2(dy, dx))) > this.fov / 2) return false;
+    return world.map.lineOfSight(this.x, this.y - 4, player.x, player.y - 4);
+  }
+
+  private goTo(target: TilePoint, world: World): void {
+    const map = world.map;
+    const here = this.tileAt(this.x, this.y);
+    const passable = (tx: number, ty: number): boolean => !map.isSolid(tx, ty) && !map.def(tx, ty).ledge;
+    this.path = findPath(here, target, map.width, map.height, passable) ?? [];
+    // Don't walk into a wall when the goal itself is solid (e.g. a pebble on a crate).
+    const last = this.path[this.path.length - 1];
+    if (last && !passable(last.tx, last.ty)) this.path.pop();
+  }
+
+  /** Moves along the current path. Returns true when there is nothing left to walk. */
+  private followPath(dt: number): boolean {
+    const next = this.path[0];
+    if (!next) return true;
+    const target = tileCenter(next);
+    target.y += 4;
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const dist = Math.hypot(dx, dy);
+    const step = this.speed * dt;
+    this.turnToward(Math.atan2(dy, dx), dt * 2.5);
+    this.walking = true;
+    this.animTime += dt;
+    if (dist <= step) {
+      this.x = target.x;
+      this.y = target.y;
+      this.path.shift();
+      return this.path.length === 0;
+    }
+    this.x += (dx / dist) * step;
+    this.y += (dy / dist) * step;
+    return false;
+  }
+
+  private turnToward(target: number, dt: number): void {
+    const diff = angleDiff(this.angle, target);
+    const maxTurn = 4 * dt;
+    this.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+  }
+
+  private angleToward(tile: TilePoint): number {
+    const c = tileCenter(tile);
+    return Math.atan2(c.y + 4 - this.y, c.x - this.x);
+  }
+
+  private tileAt(x: number, y: number): TilePoint {
+    return { tx: Math.floor(x / TILE), ty: Math.floor((y - 4) / TILE) };
+  }
+}

@@ -1,0 +1,240 @@
+/**
+ * Sanity checks for the level data, runnable with plain Node (type stripping):
+ *   npm run validate
+ *
+ * It runs each era's real setup() against a recording mock of the world API,
+ * then checks that every referenced marker exists, that characters and items
+ * stand on walkable tiles, that every interesting spot is reachable from the
+ * arrival point, and that each puzzle gate can't be bypassed. One-way ledges
+ * are respected: you can only cross them in their direction.
+ */
+import { ERAS } from '../src/eras/index.ts';
+import type { ActorHandle, CompanionHandle, EraDef, GateHandle, WorldApi } from '../src/eras/types.ts';
+import { FACING_VECTORS, TileMap, type TilePoint, type TileRect } from '../src/game/tilemap.ts';
+
+const errors: string[] = [];
+const fail = (era: string, message: string): void => {
+  errors.push(`[${era}] ${message}`);
+};
+
+const noop = (): void => {};
+const handle: ActorHandle = { x: 0, y: 0, moveTo: async () => {}, moveBy: async () => {}, emote: noop, remove: noop };
+const companionHandle: CompanionHandle = { ...handle, following: false, follow: noop, rest: noop, regroup: noop };
+const gateHandle: GateHandle = { isOpen: false, open: noop, close: noop };
+
+interface Recorded {
+  points: Array<{ marker: string; what: string; mustWalk: boolean }>;
+  /** Markers of characters that physically block their tile (people, the machine, the T. rex). */
+  solids: string[];
+  areas: Array<{ area: string | TileRect; what: string }>;
+  routes: Array<{ route: string; kind: string }>;
+  gates: string[];
+}
+
+function record(def: EraDef): Recorded {
+  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [] };
+  const point = (marker: string, what: string, mustWalk = true): void => {
+    rec.points.push({ marker, what, mustWalk });
+  };
+  const api: WorldApi = {
+    era: def.id,
+    has: () => false,
+    give: noop,
+    take: noop,
+    flag: () => false,
+    setFlag: noop,
+    save: noop,
+    say: async () => {},
+    choose: async () => 0,
+    toast: noop,
+    wait: async () => {},
+    sfx: noop,
+    music: noop,
+    shake: noop,
+    flash: noop,
+    fadeOut: async () => {},
+    fadeIn: async () => {},
+    machineGlitch: noop,
+    watcher: (spec) => rec.routes.push({ route: spec.route, kind: spec.kind }),
+    npc: (spec) => (point(spec.marker, `npc ${spec.name}`), rec.solids.push(spec.marker), handle),
+    pickup: (spec) => point(spec.marker, `pickup ${spec.item}`),
+    trigger: (spec) => rec.areas.push({ area: spec.area, what: 'trigger' }),
+    hazard: (spec) => rec.areas.push({ area: spec.area, what: `hazard ${spec.kind}` }),
+    sleeper: (spec) => (point(spec.marker, 'sleeper'), rec.solids.push(spec.marker)),
+    companion: (spec) => (point(spec.marker, `companion ${spec.name}`), companionHandle),
+    obstacle: (spec) => (point(spec.marker, `obstacle ${spec.look}`), handle),
+    machine: (marker) => (point(marker, 'machine', false), rec.solids.push(marker)),
+    inspect: (marker) => point(marker, 'inspect', false),
+    checkpoint: (marker) => point(marker, 'checkpoint'),
+    gate: (spec) => (point(spec.marker, `gate ${spec.look}`), rec.gates.push(spec.marker), gateHandle),
+    decor: (marker) => point(marker, 'decor', false),
+    ally: (spec) => (point(spec.marker, `ally ${spec.name}`), handle),
+    disable: noop,
+    enterYear: async () => 0,
+    player: handle,
+    travel: async () => {},
+    ending: async () => {},
+  };
+  def.setup(api);
+  def.objective(api);
+  return rec;
+}
+
+type Blocked = (tx: number, ty: number) => boolean;
+
+/** BFS that respects one-way ledges. `blocked` adds extra impassable tiles. */
+function reachable(map: TileMap, from: TilePoint, to: TilePoint, blocked: Blocked = () => false): boolean {
+  const seen = new Set<number>([from.ty * map.width + from.tx]);
+  const queue: TilePoint[] = [from];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur.tx === to.tx && cur.ty === to.ty) return true;
+    for (const d of Object.values(FACING_VECTORS)) {
+      const nx = cur.tx + d.x;
+      const ny = cur.ty + d.y;
+      const key = ny * map.width + nx;
+      if (!map.inBounds(nx, ny) || seen.has(key)) continue;
+      const target = nx === to.tx && ny === to.ty;
+      if (!target && (map.isSolid(nx, ny) || blocked(nx, ny))) continue;
+      const into = map.def(nx, ny).ledge;
+      const outOf = map.def(cur.tx, cur.ty).ledge;
+      if (into && FACING_VECTORS[into].x * d.x + FACING_VECTORS[into].y * d.y < 0) continue;
+      if (outOf && FACING_VECTORS[outOf].x * d.x + FACING_VECTORS[outOf].y * d.y < 0) continue;
+      seen.add(key);
+      queue.push({ tx: nx, ty: ny });
+    }
+  }
+  return false;
+}
+
+const inRect = (r: TileRect, tx: number, ty: number): boolean => tx >= r.x && ty >= r.y && tx < r.x + r.w && ty < r.y + r.h;
+
+function validate(def: EraDef): void {
+  const map = new TileMap(def.map, def.tiles, def.markerBase, def.defaultTile);
+  const widths = new Set(def.map.map((row) => row.length));
+  if (widths.size !== 1) fail(def.id, `rows have different widths: ${[...widths].join(', ')}`);
+  for (const row of def.map) {
+    for (const ch of row) {
+      if (/[A-Z0-9]/.test(ch)) {
+        if (!(ch in def.markerBase)) fail(def.id, `marker "${ch}" has no base tile`);
+      } else if (!(ch in def.tiles)) {
+        fail(def.id, `unknown tile "${ch}"`);
+      }
+    }
+  }
+  if (!map.hasMarker(def.arrival)) {
+    fail(def.id, `arrival marker "${def.arrival}" missing`);
+    return;
+  }
+
+  const walkable = (tx: number, ty: number): boolean => map.inBounds(tx, ty) && !map.isSolid(tx, ty);
+  const start = map.marker(def.arrival);
+  const rec = record(def);
+  const gateTiles = new Set(rec.gates.filter((m) => map.hasMarker(m)).map((m) => `${map.marker(m).tx},${map.marker(m).ty}`));
+  // Solid characters block their tile, except people meant to step aside after talking.
+  const MOVES_ASIDE: Record<string, string[]> = { araucania: ['W', 'L'], medieval: ['G'] };
+  const solidTiles = new Set(
+    rec.solids.filter((m) => map.hasMarker(m) && !(MOVES_ASIDE[def.id] ?? []).includes(m)).map((m) => `${map.marker(m).tx},${map.marker(m).ty}`),
+  );
+  const pastGates: Blocked = (tx, ty) => solidTiles.has(`${tx},${ty}`);
+
+  for (const { marker, what, mustWalk } of rec.points) {
+    if (!map.hasMarker(marker)) {
+      fail(def.id, `${what}: marker "${marker}" missing`);
+      continue;
+    }
+    const p = map.marker(marker);
+    if (mustWalk && !walkable(p.tx, p.ty)) fail(def.id, `${what} at ${p.tx},${p.ty} is on a solid tile`);
+    // Interact from a neighboring walkable tile (gates are assumed open here).
+    const spots = [p, { tx: p.tx, ty: p.ty + 1 }, { tx: p.tx, ty: p.ty - 1 }, { tx: p.tx + 1, ty: p.ty }, { tx: p.tx - 1, ty: p.ty }];
+    if (!spots.some((s) => walkable(s.tx, s.ty) && reachable(map, start, s, pastGates))) fail(def.id, `${what} at ${p.tx},${p.ty} is unreachable`);
+  }
+  for (const { area, what } of rec.areas) {
+    if (typeof area === 'string') {
+      if (!map.hasMarker(area)) fail(def.id, `${what}: area marker "${area}" missing`);
+    } else if (area.x < 0 || area.y < 0 || area.x + area.w > map.width || area.y + area.h > map.height) {
+      fail(def.id, `${what}: area out of bounds`);
+    }
+  }
+  for (const { route } of rec.routes) {
+    const points = route.split('').map((ch) => (map.hasMarker(ch) ? map.marker(ch) : null));
+    if (points.some((p) => p === null)) {
+      fail(def.id, `route "${route}" uses a missing marker`);
+      continue;
+    }
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i]!;
+      const b = points[(i + 1) % points.length]!;
+      if (!walkable(a.tx, a.ty)) fail(def.id, `route "${route}" point ${a.tx},${a.ty} is solid`);
+      if (!reachable(map, a, b)) fail(def.id, `route "${route}" can't walk ${a.tx},${a.ty} -> ${b.tx},${b.ty}`);
+    }
+  }
+
+  const closedGates: Blocked = (tx, ty) => gateTiles.has(`${tx},${ty}`);
+  const at = (m: string): TilePoint => map.marker(m);
+  const not = (m: string): Blocked => (tx, ty) => tx === at(m).tx && ty === at(m).ty;
+  const any = (...checks: Blocked[]): Blocked => (tx, ty) => checks.some((c) => c(tx, ty));
+
+  if (def.id === 'prehistory') {
+    const quiet: Blocked = (tx, ty) => map.def(tx, ty).noise !== undefined;
+    if (!reachable(map, at('X'), at('2'), quiet)) fail(def.id, 'no bone-free route from the cave entrance to the obsidian');
+    if (reachable(map, start, at('3'), not('K'))) fail(def.id, 'the meteorite is reachable without moving the boulder');
+    // Raptors guard the passages: the cave and Pip can't be reached without crossing a patrol...
+    const lanes = new Set<string>();
+    for (const { route, kind } of rec.routes) {
+      if (kind !== 'raptor') continue;
+      const pts = route.split('').map(at);
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        for (let x = Math.min(a.tx, b.tx); x <= Math.max(a.tx, b.tx); x++) {
+          for (let y = Math.min(a.ty, b.ty); y <= Math.max(a.ty, b.ty); y++) lanes.add(`${x},${y}`);
+        }
+      }
+    }
+    const onLane: Blocked = (tx, ty) => lanes.has(`${tx},${ty}`);
+    if (reachable(map, start, at('X'), onLane) === false) fail(def.id, 'the hub is cut off by raptor lanes');
+    if (reachable(map, start, at('2'), onLane)) fail(def.id, 'the cave is reachable without crossing a raptor patrol');
+    if (reachable(map, start, at('P'), onLane)) fail(def.id, 'Pip is reachable without crossing a raptor patrol');
+    // ...but no raptor patrols right next to the injured Pip.
+    const pip = at('P');
+    for (const key of lanes) {
+      const [x, y] = key.split(',').map(Number);
+      if (Math.hypot(x - pip.tx, y - pip.ty) < 8) fail(def.id, `a raptor lane passes too close to Pip (${x},${y})`);
+    }
+    const pass = map.markerArea('J');
+    if (reachable(map, start, at('5'), (tx, ty) => inRect(pass, tx, ty))) fail(def.id, 'the summit is reachable without crossing the mountain pass');
+  }
+  if (def.id === 'medieval') {
+    const door = map.markerArea('N');
+    const sealed = any((tx, ty) => inRect(door, tx, ty), not('O'), (tx, ty) => map.get(tx, ty) === 'h' && tx === 39 && ty === 14);
+    if (reachable(map, at('Z'), at('4'), sealed)) fail(def.id, 'the tower can be entered from the escape route');
+    if (!reachable(map, at('4'), at('Z'))) fail(def.id, 'the escape route from the tower to the outside is broken');
+  }
+  if (def.id === 'araucania') {
+    const gate = map.markerArea('U');
+    if (reachable(map, start, at('1'), (tx, ty) => inRect(gate, tx, ty))) fail(def.id, 'the fort can be entered without passing the gate');
+    if (!reachable(map, at('1'), at('X'), (tx, ty) => inRect(gate, tx, ty))) fail(def.id, 'the breach exit out of the fort is broken');
+    // The Mapuche camp is only reachable through its south path, past the sentry.
+    const campPath: Blocked = (tx, ty) => tx === 8 && ty === 24;
+    if (reachable(map, start, at('L'), campPath)) fail(def.id, 'the camp can be entered without using the south path');
+  }
+  if (def.id === 'future') {
+    if (reachable(map, start, at('1'), closedGates)) fail(def.id, 'the lab is reachable with the laser gates closed');
+    if (reachable(map, start, at('U'), closedGates)) fail(def.id, 'the lobby is reachable with the tower gate closed');
+  }
+  if (def.id === 'ruins') {
+    if (reachable(map, start, at('P'), not('K'))) fail(def.id, "Pike's lab is reachable without moving the column");
+    if (reachable(map, start, at('P'), closedGates)) fail(def.id, "Pike's lab is reachable with its door closed");
+  }
+
+  console.log(`${def.id}: ${map.width}x${map.height}, ${rec.points.length} spawns, ${rec.routes.length} patrols, ${rec.areas.length} areas`);
+}
+
+for (const def of Object.values(ERAS)) validate(def);
+
+if (errors.length > 0) {
+  console.error(`\n${errors.length} problem(s):\n${errors.map((e) => `  - ${e}`).join('\n')}`);
+  throw new Error('Map validation failed.');
+}
+console.log('All maps OK.');
