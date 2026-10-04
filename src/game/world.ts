@@ -100,6 +100,14 @@ export interface NoiseRing {
 }
 
 const THROW_RANGE = 64;
+/** A wrapped journal line; the first line of a speech starts with the speaker's name in their color. */
+interface JournalRow {
+  name?: string;
+  nameColor?: string;
+  text: string;
+  color: string;
+}
+
 /** Journal lines on screen, and how a held Up/Down keeps scrolling (first delay, then rate), in seconds. */
 const JOURNAL_LINES = 15;
 const JOURNAL_REPEAT_DELAY = 0.3;
@@ -167,7 +175,7 @@ export class World implements Scene, WorldApi {
   private journalOpen = false;
   private journalScroll = 0;
   /** Wrapped journal lines, built when the journal opens (the log can't change while paused). */
-  private journalRows: Array<{ text: string; color: string }> | null = null;
+  private journalRows: JournalRow[] | null = null;
   /** Seconds until a held Up/Down scrolls the journal again. */
   private journalRepeat = 0;
   private musicOverride: MusicTheme | null = null;
@@ -998,11 +1006,14 @@ export class World implements Scene, WorldApi {
     drawText(ui, 'JOURNAL', VIEW_W / 2, 15, { size: 9, bold: true, align: 'center', color: '#f1c232' });
 
     if (!this.journalRows) {
-      const rows: Array<{ text: string; color: string }> = [];
+      const rows: JournalRow[] = [];
       for (const [speaker, text] of withoutRepeats(this.game.state.log)) {
         const prefix = speaker ? `${speaker}: ` : '';
+        // Only the speaker's name takes their color; what they say is the same color on every line.
+        const color = speaker ? '#f4f1de' : '#b8c4d8';
         wrapText(ui, prefix + text, 262, 6).forEach((line, i) => {
-          rows.push({ text: line, color: i === 0 && speaker ? speakerColor(speaker) : speaker ? '#f4f1de' : '#b8c4d8' });
+          if (i === 0 && speaker) rows.push({ name: prefix, nameColor: speakerColor(speaker), text: line.slice(prefix.length), color });
+          else rows.push({ text: line, color });
         });
         rows.push({ text: '', color: '' });
       }
@@ -1012,8 +1023,15 @@ export class World implements Scene, WorldApi {
     const maxScroll = Math.max(0, rows.length - JOURNAL_LINES);
     this.journalScroll = Math.min(this.journalScroll, maxScroll);
     const start = Math.max(0, rows.length - JOURNAL_LINES - this.journalScroll);
+    ui.font = `6px ${FONT_FAMILY}`;
     rows.slice(start, start + JOURNAL_LINES).forEach((row, i) => {
-      if (row.text) drawText(ui, row.text, 26, 29 + i * 8.6, { size: 6, color: row.color, shadow: null });
+      const y = 29 + i * 8.6;
+      let x = 26;
+      if (row.name) {
+        drawText(ui, row.name, x, y, { size: 6, color: row.nameColor, shadow: null });
+        x += ui.measureText(row.name).width;
+      }
+      if (row.text) drawText(ui, row.text, x, y, { size: 6, color: row.color, shadow: null });
     });
     if (rows.length === 0) drawText(ui, 'Nothing written yet.', VIEW_W / 2, 80, { size: 6.5, align: 'center', color: '#55607a' });
     if (maxScroll > 0) {
