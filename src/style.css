@@ -31,3 +31,177 @@ body {
 #stage canvas.ui {
   pointer-events: none;
 }
+
+/* Phones: no page scrolling, zooming, text selection or callouts while playing. */
+html,
+body {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- On-screen controls (src/engine/touch.ts) --- */
+
+.touch {
+  position: fixed;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.touch.shown {
+  display: block;
+}
+
+.touch button {
+  pointer-events: auto;
+  touch-action: none;
+  margin: 0;
+  padding: 0;
+  border: 2px solid rgba(244, 241, 222, 0.55);
+  background: rgba(10, 12, 24, 0.35);
+  color: #f4f1de;
+  font: inherit;
+}
+
+.touch button.down {
+  background: rgba(127, 216, 255, 0.45);
+  border-color: #7fd8ff;
+}
+
+/* The joystick lives anywhere on the left half, below the HUD's era label. */
+.touch-stick-zone {
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-stick {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 90px);
+  top: calc(100% - env(safe-area-inset-bottom, 0px) - 90px);
+  width: 104px;
+  height: 104px;
+  margin: -52px 0 0 -52px;
+  border-radius: 50%;
+  border: 2px solid rgba(244, 241, 222, 0.35);
+  background: rgba(10, 12, 24, 0.25);
+  display: grid;
+  place-items: center;
+  opacity: 0.6;
+}
+
+.touch-stick.active {
+  opacity: 1;
+}
+
+.touch-knob {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(244, 241, 222, 0.55);
+  border: 2px solid rgba(244, 241, 222, 0.8);
+}
+
+/* A/B/X/Y in a diamond, like a gamepad. */
+.touch-pad {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  width: 168px;
+  height: 168px;
+}
+
+.touch-btn {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.touch-letter {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.touch-caption {
+  font-size: 9px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.touch-a {
+  left: 55px;
+  bottom: 0;
+  width: 64px;
+  height: 64px;
+  margin-left: -3px;
+  border-color: rgba(90, 255, 138, 0.7) !important;
+}
+
+.touch-b {
+  right: 0;
+  top: 55px;
+  border-color: rgba(255, 96, 96, 0.7) !important;
+}
+
+.touch-x {
+  left: 0;
+  top: 55px;
+  border-color: rgba(127, 216, 255, 0.7) !important;
+}
+
+.touch-y {
+  left: 55px;
+  top: 0;
+  border-color: rgba(241, 194, 50, 0.7) !important;
+}
+
+.touch-system {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: calc(env(safe-area-inset-right, 0px) + 10px);
+  display: flex;
+  gap: 8px;
+}
+
+.touch-sys {
+  min-width: 44px;
+  height: 32px;
+  padding: 0 10px !important;
+  border-radius: 8px;
+  font-size: 13px !important;
+}
+
+/* The game is 16:9: ask phones held upright to turn sideways. */
+.rotate {
+  display: none;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--bg);
+    color: #f1c232;
+    font: bold 18px ui-monospace, Menlo, Consolas, monospace;
+    text-align: center;
+  }
+}

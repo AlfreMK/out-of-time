@@ -44,11 +44,11 @@ import {
   Sleeper,
   Thrown,
 } from './entities/props.ts';
-import { Watcher, type Food } from './entities/watcher.ts';
+import { Watcher, type Food, type NoiseKind } from './entities/watcher.ts';
 import { showEnding, startTravel, toTitle } from './flow.ts';
 import type { Game, Scene } from './game.ts';
 import { FOODS, ITEMS, TOOLS } from './items.ts';
-import { ERA_IDS, ITEM_IDS, type EraId, type ItemId } from './state.ts';
+import { ERA_IDS, ITEM_IDS, withoutRepeats, type EraId, type ItemId } from './state.ts';
 import { TILE, TileMap, type TileRect, type TilePoint } from './tilemap.ts';
 import { ChoiceMenu, DialogueBox, drawPanel, speakerColor, Timers, YearPicker } from './ui.ts';
 import { eraFlags, Flag, progress, type FlagName } from './flags.ts';
@@ -100,6 +100,16 @@ export interface NoiseRing {
 }
 
 const THROW_RANGE = 64;
+/** Journal lines on screen, and how a held Up/Down keeps scrolling (first delay, then rate), in seconds. */
+const JOURNAL_LINES = 15;
+const JOURNAL_REPEAT_DELAY = 0.3;
+const JOURNAL_REPEAT_RATE = 0.05;
+/** Auto-checkpoints need to be this far (px) beyond a watcher's vision range from anywhere on its patrol. */
+const SAFE_MARGIN = 20;
+/** ...and this far from a sleeping beast. */
+const SAFE_FROM_SLEEPER = 80;
+/** A new auto-checkpoint is only taken this far (px) from the current one. */
+const SAFE_SPACING = 48;
 /** How far the pifilka whistle carries to hidden allies. */
 const WHISTLE_RANGE = 170;
 type PauseOption = 'Resume' | 'Journal' | 'Sound' | 'Debug' | 'Quit to title';
@@ -130,6 +140,7 @@ export class World implements Scene, WorldApi {
   private readonly checkpoints: Array<{ x: number; y: number }> = [];
   private readonly musicZones: Array<{ rect: PixelRect; theme: MusicTheme; when?: (w: WorldApi) => boolean }> = [];
   private activeCheckpoint: { x: number; y: number };
+  private safeTimer = 0;
   private particles: Particle[] = [];
   private rings: NoiseRing[] = [];
   private readonly dialogue = new DialogueBox();
@@ -155,6 +166,10 @@ export class World implements Scene, WorldApi {
   private pauseIndex = 0;
   private journalOpen = false;
   private journalScroll = 0;
+  /** Wrapped journal lines, built when the journal opens (the log can't change while paused). */
+  private journalRows: Array<{ text: string; color: string }> | null = null;
+  /** Seconds until a held Up/Down scrolls the journal again. */
+  private journalRepeat = 0;
   private musicOverride: MusicTheme | null = null;
   private time = 0;
   private visits = 0;
@@ -220,7 +235,7 @@ export class World implements Scene, WorldApi {
   update(dt: number): void {
     const input = this.game.input;
     if (this.paused) {
-      this.updatePause();
+      this.updatePause(dt);
       return;
     }
     if (input.wasPressed('pause') && !this.controlsLocked) {
@@ -248,7 +263,7 @@ export class World implements Scene, WorldApi {
     if (!this.controlsLocked) {
       this.updateTriggers();
       this.updateHazards(dt);
-      this.updateCheckpoints();
+      this.updateCheckpoints(dt);
       this.updateInteraction();
       this.updateTools(dt);
     }
@@ -279,7 +294,7 @@ export class World implements Scene, WorldApi {
   }
 
   /** Emits a sound. Watchers investigate, dogs come for food, sleepers wake up. */
-  noise(x: number, y: number, radius: number, kind: 'step' | 'noise' | 'food', food?: Food): void {
+  noise(x: number, y: number, radius: number, kind: NoiseKind, food?: Food): void {
     if (kind !== 'food') this.rings.push({ x, y, radius, t: 0 });
     for (const watcher of this.watchers) watcher.hear(x, y, radius, kind, this, food);
     if (kind === 'food') return;
@@ -431,14 +446,49 @@ export class World implements Scene, WorldApi {
     }
   }
 
-  private updateCheckpoints(): void {
+  private updateCheckpoints(dt: number): void {
     for (const cp of this.checkpoints) {
       if (cp === this.activeCheckpoint || Math.hypot(cp.x - this.hero.x, cp.y - this.hero.y) >= 24) continue;
-      this.activeCheckpoint = cp;
-      // Continuing a saved game resumes from here.
-      this.game.state.checkpoint = { era: this.def.id, x: cp.x, y: cp.y };
-      this.save();
+      this.setCheckpoint(cp);
     }
+    // Between the era's fixed checkpoints, any quiet spot out of every watcher's reach becomes one too,
+    // so getting caught never sends the player back past a patrol they already slipped by.
+    this.safeTimer -= dt;
+    if (this.safeTimer > 0) return;
+    this.safeTimer = 0.25;
+    const { x, y } = this.hero;
+    if (Math.hypot(x - this.activeCheckpoint.x, y - this.activeCheckpoint.y) < SAFE_SPACING) return;
+    if (this.isSafeSpot(x, y)) this.setCheckpoint({ x, y });
+  }
+
+  private setCheckpoint(cp: { x: number; y: number }): void {
+    this.activeCheckpoint = cp;
+    // Continuing a saved game resumes from here.
+    this.game.state.checkpoint = { era: this.def.id, x: cp.x, y: cp.y };
+    this.save();
+  }
+
+  /** A spot where respawning can't get the player caught again straight away. */
+  private isSafeSpot(x: number, y: number): boolean {
+    const hero = this.hero;
+    if (hero.isHopping || hero.stun > 0) return false;
+    const def = this.map.defAt(x, y);
+    if (def.noise || def.ledge || this.isBlocked(x, y, hero.hw, hero.hh, hero)) return false;
+    const near = (r: PixelRect, pad: number): boolean => x >= r.x - pad && y >= r.y - pad && x < r.x + r.w + pad && y < r.y + r.h + pad;
+    if (this.hazards.some((h) => near(h.rect, 16))) return false;
+    if (this.triggers.some((t) => t.spec.block && near(t.rect, 8))) return false;
+    if (this.sleepers.some((s) => !s.removed && Math.hypot(s.x - x, s.y - y) < SAFE_FROM_SLEEPER)) return false;
+    for (const watcher of this.watchers) {
+      if (watcher.removed) continue;
+      // Not while anyone is still suspicious or searching.
+      if (watcher.suspicion > 0 || watcher.state === 'investigate' || watcher.state === 'look') return false;
+      const reach = watcher.range + SAFE_MARGIN;
+      const eyes = [{ x: watcher.x, y: watcher.y - 4 }, ...watcher.patrolPoints(this)];
+      for (const p of eyes) {
+        if (Math.hypot(p.x - x, p.y - (y - 4)) < reach && this.map.lineOfSight(p.x, p.y, x, y - 4)) return false;
+      }
+    }
+    return true;
   }
 
   private updateMusic(): void {
@@ -554,7 +604,8 @@ export class World implements Scene, WorldApi {
       void this.timers.wait(0.7).then(() => {
         this.game.audio.sfx('horn');
         ally.emote('note', 1.5);
-        this.noise(ally.x, ally.y, 150, 'noise');
+        // A war horn: loud enough to pull even posted sentries away.
+        this.noise(ally.x, ally.y, 150, 'horn');
       });
     }
   }
@@ -575,16 +626,17 @@ export class World implements Scene, WorldApi {
     return this.game.godMode ? ['Resume', 'Journal', 'Sound', 'Debug', 'Quit to title'] : ['Resume', 'Journal', 'Sound', 'Quit to title'];
   }
 
-  private updatePause(): void {
+  private updatePause(dt: number): void {
     const input = this.game.input;
     const PAUSE_OPTIONS = this.pauseOptions;
     this.pauseIndex = Math.min(this.pauseIndex, PAUSE_OPTIONS.length - 1);
     if (this.journalOpen) {
-      if (input.consume('up')) this.journalScroll++;
-      if (input.consume('down')) this.journalScroll = Math.max(0, this.journalScroll - 1);
+      this.scrollJournal(dt);
       if (input.consume('back') || input.consume('pause') || input.consume('interact')) this.journalOpen = false;
       return;
     }
+    // The wheel only scrolls the journal: drop what piled up elsewhere.
+    input.wheelLines();
     if (input.consume('up')) this.pauseIndex = (this.pauseIndex + PAUSE_OPTIONS.length - 1) % PAUSE_OPTIONS.length;
     if (input.consume('down')) this.pauseIndex = (this.pauseIndex + 1) % PAUSE_OPTIONS.length;
     if (input.consume('pause') || input.consume('back')) {
@@ -598,6 +650,7 @@ export class World implements Scene, WorldApi {
     else if (option === 'Journal') {
       this.journalOpen = true;
       this.journalScroll = 0;
+      this.journalRows = null;
     } else if (option === 'Sound') this.game.audio.toggleMute();
     else if (option === 'Debug') {
       this.paused = false;
@@ -883,8 +936,9 @@ export class World implements Scene, WorldApi {
       drawText(ui, `${selected ? '>' : ' '} ${label}`, 32, 54 + i * 11, { color: selected ? '#ffffff' : '#9aa6bb' });
     });
     const pad = input.device !== 'keyboard';
+    const moveWith = input.device === 'touch' ? 'Joystick (left)' : pad ? 'Left stick / D-pad' : 'WASD / Arrows';
     const controls = [
-      `Move ........ ${pad ? 'Left stick / D-pad' : 'WASD / Arrows'}`,
+      `Move ........ ${moveWith}`,
       `Interact .... ${input.glyph('interact')}${pad ? '' : ' / Space'}`,
       `Sneak ....... Hold ${input.glyph('sneak')}${pad ? ' / tilt gently' : ''}`,
       `Use item .... ${input.glyph('throw')}`,
@@ -908,7 +962,34 @@ export class World implements Scene, WorldApi {
     });
   }
 
-  /** The story so far: every line of dialogue, newest at the bottom. */
+  /**
+   * Up/Down scroll a line (holding them keeps scrolling), Left/Right a page, and so does the mouse wheel.
+   * `journalScroll` counts lines up from the newest one.
+   */
+  private scrollJournal(dt: number): void {
+    const input = this.game.input;
+    let delta = -input.wheelLines();
+    if (input.consume('up')) {
+      delta++;
+      this.journalRepeat = JOURNAL_REPEAT_DELAY;
+    } else if (input.consume('down')) {
+      delta--;
+      this.journalRepeat = JOURNAL_REPEAT_DELAY;
+    } else if (input.isHeld('up') || input.isHeld('down')) {
+      // Same speed at any frame rate: catch up on every line due since the last frame.
+      this.journalRepeat -= dt;
+      while (this.journalRepeat <= 0) {
+        this.journalRepeat += JOURNAL_REPEAT_RATE;
+        delta += input.isHeld('up') ? 1 : -1;
+      }
+    }
+    if (input.consume('left')) delta += JOURNAL_LINES - 1;
+    if (input.consume('right')) delta -= JOURNAL_LINES - 1;
+    const maxScroll = Math.max(0, (this.journalRows?.length ?? 0) - JOURNAL_LINES);
+    this.journalScroll = clamp(this.journalScroll + delta, 0, maxScroll);
+  }
+
+  /** The story so far: every line of dialogue (minus back-to-back repeats), newest at the bottom. */
   private drawJournal(screen: Screen): void {
     const ui = screen.ui;
     ui.fillStyle = 'rgba(0,0,0,0.6)';
@@ -916,24 +997,38 @@ export class World implements Scene, WorldApi {
     drawPanel(ui, 16, 10, 288, 160, 0.96);
     drawText(ui, 'JOURNAL', VIEW_W / 2, 15, { size: 9, bold: true, align: 'center', color: '#f1c232' });
 
-    const rows: Array<{ text: string; color: string }> = [];
-    for (const [speaker, text] of this.game.state.log) {
-      const prefix = speaker ? `${speaker}: ` : '';
-      wrapText(ui, prefix + text, 266, 6).forEach((line, i) => {
-        rows.push({ text: line, color: i === 0 && speaker ? speakerColor(speaker) : speaker ? '#f4f1de' : '#b8c4d8' });
-      });
-      rows.push({ text: '', color: '' });
+    if (!this.journalRows) {
+      const rows: Array<{ text: string; color: string }> = [];
+      for (const [speaker, text] of withoutRepeats(this.game.state.log)) {
+        const prefix = speaker ? `${speaker}: ` : '';
+        wrapText(ui, prefix + text, 262, 6).forEach((line, i) => {
+          rows.push({ text: line, color: i === 0 && speaker ? speakerColor(speaker) : speaker ? '#f4f1de' : '#b8c4d8' });
+        });
+        rows.push({ text: '', color: '' });
+      }
+      this.journalRows = rows;
     }
-    const visible = 15;
-    const maxScroll = Math.max(0, rows.length - visible);
+    const rows = this.journalRows;
+    const maxScroll = Math.max(0, rows.length - JOURNAL_LINES);
     this.journalScroll = Math.min(this.journalScroll, maxScroll);
-    const start = Math.max(0, rows.length - visible - this.journalScroll);
-    rows.slice(start, start + visible).forEach((row, i) => {
+    const start = Math.max(0, rows.length - JOURNAL_LINES - this.journalScroll);
+    rows.slice(start, start + JOURNAL_LINES).forEach((row, i) => {
       if (row.text) drawText(ui, row.text, 26, 29 + i * 8.6, { size: 6, color: row.color, shadow: null });
     });
     if (rows.length === 0) drawText(ui, 'Nothing written yet.', VIEW_W / 2, 80, { size: 6.5, align: 'center', color: '#55607a' });
+    if (maxScroll > 0) {
+      // Scrollbar: where the visible lines sit in the whole journal.
+      const trackY = 28;
+      const trackH = 128;
+      const thumbH = Math.max(8, (trackH * JOURNAL_LINES) / rows.length);
+      const thumbY = trackY + (trackH - thumbH) * (start / maxScroll);
+      ui.fillStyle = 'rgba(255,255,255,0.12)';
+      ui.fillRect(294, trackY, 2, trackH);
+      ui.fillStyle = '#f1c232';
+      ui.fillRect(294, thumbY, 2, thumbH);
+    }
     const input = this.game.input;
-    drawText(ui, `Up/Down scroll · ${input.glyph('back')} close`, VIEW_W / 2, 161, { size: 5.5, align: 'center', color: '#9aa6bb' });
+    drawText(ui, `Up/Down scroll · Left/Right page · ${input.glyph('back')} close`, VIEW_W / 2, 161, { size: 5.5, align: 'center', color: '#9aa6bb' });
   }
 
   // ---------------------------------------------------------------------------
@@ -1221,6 +1316,12 @@ export class World implements Scene, WorldApi {
 
   alarm(radius: number): void {
     this.noise(this.hero.x, this.hero.y, radius, 'noise');
+  }
+
+  /** A posted watcher shrugged off a small noise. */
+  heldPost(watcher: Watcher): void {
+    const run = watcher.spec.onHoldPost;
+    if (run && !this.controlsLocked && !this.caughtLock) void this.runScript(run);
   }
 
   disable(group: string, seconds: number): void {

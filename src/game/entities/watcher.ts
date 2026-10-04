@@ -1,4 +1,4 @@
-import type { Facing, WatcherKind, WatcherSpec } from '../../eras/types.ts';
+import type { Barks, Facing, WatcherKind, WatcherSpec } from '../../eras/types.ts';
 import { angleDiff } from '../../engine/random.ts';
 import { findPath } from '../pathfinding.ts';
 import { TILE, tileCenter, type TilePoint } from '../tilemap.ts';
@@ -43,7 +43,7 @@ const TUNING: Record<WatcherKind, KindTuning> = {
  * Default speech bubbles. Like the Spanish soldiers in Araucanía, Cologne's guards shout in German:
  * the earpiece only translates real conversations.
  */
-const BARKS: Partial<Record<WatcherKind, { suspicious: string[]; investigate: string[]; giveUp: string[] }>> = {
+const BARKS: Partial<Record<WatcherKind, Partial<Barks>>> = {
   guard: {
     suspicious: ['Hm? Wer da?', 'Was war das?', 'Hat sich da was bewegt?'],
     investigate: ['Ich seh mal nach.', 'Zeig dich!', 'Wer macht da Lärm?'],
@@ -53,6 +53,7 @@ const BARKS: Partial<Record<WatcherKind, { suspicious: string[]; investigate: st
     suspicious: ['¿Quién anda ahí?', '¿Qué fue eso?', '¿Hay alguien?'],
     investigate: ['¡Voy a ver!', '¡Alto, en nombre del Rey!', '¡Sal de ahí!'],
     giveUp: ['Habrá sido un zorro.', 'Nada. Malditos bosques.', 'Será el viento.'],
+    holdPost: ['¿Una piedra? No dejo la puerta.', 'Mi puesto es la puerta. Que vaya otro.', 'Serán los muchachos tirando piedras.'],
   },
   rider: {
     suspicious: ['¿Qué se mueve allí?'],
@@ -76,9 +77,21 @@ const BARKS: Partial<Record<WatcherKind, { suspicious: string[]; investigate: st
   },
 };
 
+/** Seconds spent looking around where a noise came from. */
+const SEARCH_TIME = 2.6;
+/**
+ * A war horn means an attack: they search much longer, and keep their eyes on the woods it came from
+ * (narrow sweep, facing away from their post), which gives the player time to slip in behind them.
+ */
+const HORN_SEARCH_TIME = 8;
+const HORN_SWEEP = 0.6;
+
 /** Distance under which being "hidden" stops working — they'd bump into you. */
 const POINT_BLANK = 18;
 const TOUCH = 11;
+
+/** Footsteps, a small noise (a pebble, glass, a puddle, an alarm), a war horn (the scouts' trutruka), or food landing. */
+export type NoiseKind = 'step' | 'noise' | 'horn' | 'food';
 
 /** Anything that hears food lands near it and eats it (bread for the dog). */
 export interface Food {
@@ -116,6 +129,11 @@ export class Watcher extends Entity {
   private lookCenter: number;
   private food: Food | null = null;
   private barkCooldown = 0;
+  private patrol: Array<{ x: number; y: number }> | null = null;
+  private searchTime = SEARCH_TIME;
+  private searchSweep = 1.2;
+  /** Where to keep looking once at the noise (a horn: away from the post), or null to look around freely. */
+  private searchAngle: number | null = null;
 
   constructor(spec: WatcherSpec, route: TilePoint[]) {
     super();
@@ -149,6 +167,29 @@ export class Watcher extends Entity {
     this.angle = this.route.length > 1 ? this.angleToward(this.route[1]) : this.postAngle;
     this.lookCenter = this.angle;
     this.asleep = this.spec.dormant === true;
+    this.setSearch(false, 0, 0);
+  }
+
+  private setSearch(horn: boolean, x: number, y: number): void {
+    this.searchTime = horn ? HORN_SEARCH_TIME : SEARCH_TIME;
+    this.searchSweep = horn ? HORN_SWEEP : 1.2;
+    const post = tileCenter(this.route[this.routeIndex]);
+    this.searchAngle = horn ? Math.atan2(y - post.y, x - post.x) : null;
+  }
+
+  /** Every point (eye level) its patrol loop walks through, from a respawn on. */
+  patrolPoints(world: World): ReadonlyArray<{ x: number; y: number }> {
+    if (!this.patrol) {
+      const tiles: TilePoint[] = [this.route[0]];
+      const map = world.map;
+      const passable = (tx: number, ty: number): boolean => !map.isSolid(tx, ty) && !map.def(tx, ty).ledge;
+      for (let i = 0; i < this.route.length && this.route.length > 1; i++) {
+        const leg = findPath(this.route[i], this.route[(i + 1) % this.route.length], map.width, map.height, passable);
+        if (leg) tiles.push(...leg);
+      }
+      this.patrol = tiles.map((tile) => tileCenter(tile));
+    }
+    return this.patrol;
   }
 
   get isStationary(): boolean {
@@ -221,7 +262,7 @@ export class Watcher extends Entity {
     return this.kind === 'camera' || this.kind === 'drone' || this.kind === 'bot';
   }
 
-  private say(kind: 'suspicious' | 'investigate' | 'giveUp'): void {
+  private say(kind: keyof Barks): void {
     const lines = this.spec.barks?.[kind] ?? BARKS[this.kind]?.[kind];
     if (!lines || lines.length === 0 || this.barkCooldown > 0) return;
     this.bark = { text: lines[Math.floor(Math.random() * lines.length)], time: 2.2 };
@@ -247,7 +288,10 @@ export class Watcher extends Entity {
         if (this.followPath(dt)) {
           this.timer = 0;
           this.lookCenter = this.angle;
-          if (this.state === 'investigate') this.state = 'look';
+          if (this.state === 'investigate') {
+            this.state = 'look';
+            if (this.searchAngle !== null) this.lookCenter = this.searchAngle;
+          }
           else {
             // A dormant watcher back at its post powers down again.
             if (this.state === 'return' && this.spec.dormant) this.asleep = true;
@@ -257,8 +301,8 @@ export class Watcher extends Entity {
         break;
       case 'look':
         this.timer += dt;
-        this.turnToward(this.lookCenter + Math.sin(this.timer * 2) * 1.2, dt);
-        if (this.timer > 2.6) {
+        this.turnToward(this.lookCenter + Math.sin(this.timer * 2) * this.searchSweep, dt);
+        if (this.timer > this.searchTime) {
           this.say('giveUp');
           this.goTo(this.route[this.routeIndex], world);
           this.state = 'return';
@@ -285,13 +329,16 @@ export class Watcher extends Entity {
     }
   }
 
-  /** Reacts to sounds. Dogs only care about food; cameras are deaf; everyone else investigates. */
-  hear(x: number, y: number, radius: number, kind: 'step' | 'noise' | 'food', world: World, food?: Food): void {
+  /**
+   * Reacts to sounds. Dogs only care about food; cameras are deaf; posted sentries only leave for an alarm;
+   * everyone else investigates.
+   */
+  hear(x: number, y: number, radius: number, kind: NoiseKind, world: World, food?: Food): void {
     if (this.state === 'eat' || this.disabled || this.tuning.hearing === 0) return;
     if (Math.hypot(this.x - x, this.y - y) > radius * this.tuning.hearing) return;
     if (this.asleep) {
       // Footsteps don't wake it; crunching glass or an alarm does.
-      if (kind !== 'noise') return;
+      if (kind === 'step' || kind === 'food') return;
       this.asleep = false;
       this.emote('alert', 1);
     }
@@ -306,7 +353,15 @@ export class Watcher extends Entity {
       return;
     }
     const target = this.tileAt(x, y);
-    if (this.kind === 'dog') {
+    if (this.spec.posted && kind === 'noise') {
+      // Not worth leaving the post for, and not even worth looking away from it.
+      this.emote('question', 0.8);
+      this.say('holdPost');
+      world.heldPost(this);
+      return;
+    }
+    this.setSearch(kind === 'horn', x, y);
+    if (this.kind === 'dog' || (this.spec.posted && kind === 'step')) {
       this.lookCenter = Math.atan2(y - this.y, x - this.x);
       this.timer = 0;
       this.state = 'look';

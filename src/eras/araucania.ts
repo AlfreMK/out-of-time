@@ -213,8 +213,10 @@ export const ARAUCANIA: EraDef = {
     });
 
     // --- Spanish soldiers ---
-    w.watcher({ kind: 'soldier', route: 'F', facing: 'left', sweep: 0.5, range: 92, caught: SOLDIER_CAUGHT });
-    w.watcher({ kind: 'soldier', route: 'H', facing: 'left', sweep: 0.5, range: 92, caught: SOLDIER_CAUGHT });
+    // The gate sentries won't leave their post for a stone in the grass; only a trutruka (an attack!) moves them.
+    const gateGuard = { kind: 'soldier', facing: 'left', sweep: 0.5, range: 92, caught: SOLDIER_CAUGHT, posted: true, onHoldPost: pebbleHint } as const;
+    w.watcher({ ...gateGuard, route: 'F' });
+    w.watcher({ ...gateGuard, route: 'H' });
     w.watcher({ kind: 'soldier', route: 'IJ', wait: 1.6, caught: SOLDIER_CAUGHT });
     w.watcher({ kind: 'soldier', route: 'KN', wait: 1.8, caught: SOLDIER_CAUGHT });
     w.watcher({ kind: 'soldier', route: 'O', facing: 'left', sweep: 1.0, range: 110, caught: SOLDIER_CAUGHT });
@@ -293,12 +295,25 @@ async function meetLautaro(w: WorldApi, lautaro: ActorHandle, sentry: ActorHandl
     [Speaker.Lautaro, 'The wingka guard their gold like a machi guards her kultrun. But they are few in Tucapel now, and nervous.'],
     [Speaker.Lautaro, 'My weichafe hide in the quila around the fort. When they hear a pifilka, they sound the trutruka, and the soldiers run toward the noise.'],
     [Speaker.Lautaro, 'A soldier who chases noises does not watch his door.'],
+    [Speaker.Lautaro, 'The men at the gate shrug off a stone in the grass. But a trutruka means war, and every one of them runs to meet it.'],
     [Speaker.Andrew, 'A pifilka... a whistle? Where do I get one?'],
     [Speaker.Lautaro, 'The children carve the best ones. Ask Ayelén, by the rukas. Though she has been sulking since they lost their pali.'],
   );
   await sentry.moveBy(-16, 0, 40);
   await lautaro.moveTo('L', 70);
   w.save();
+}
+
+/** The first time a pebble fails on the gate sentries. */
+async function pebbleHint(w: WorldApi): Promise<void> {
+  if (w.flag(Flag.AraPostHint)) return;
+  w.setFlag(Flag.AraPostHint);
+  await w.say(
+    [Speaker.Andrew, "They won't leave the gate for a pebble. Sentries on a frontier fort expect an attack, not a game."],
+    w.has('pifilka')
+      ? [Speaker.Andrew, "But a trutruka sounds like one. Time for Ayelén's pifilka, near the scouts in the quila."]
+      : [Speaker.Andrew, 'Lautaro said his scouts can make a much bigger noise. I need a way to call them.'],
+  );
 }
 
 async function talkToLautaro(w: WorldApi): Promise<void> {

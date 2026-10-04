@@ -24,7 +24,6 @@ export type ItemId =
   | 'canelo'
   | 'maqui'
   | 'pali'
-  | 'charqui'
   // Neo-Tokyo
   | 'clock'
   | 'tape'
@@ -61,7 +60,6 @@ export const ITEM_IDS: readonly ItemId[] = [
   'canelo',
   'maqui',
   'pali',
-  'charqui',
   'clock',
   'tape',
   'powercell',
@@ -149,6 +147,8 @@ export class GameState {
   }
 
   record(speaker: string | null, text: string): void {
+    const last = this.log[this.log.length - 1];
+    if (last && last[0] === speaker && last[1] === text) return;
     this.log.push([speaker, text]);
     if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG);
   }
@@ -210,6 +210,35 @@ function readStorage(key: string): string | null {
   }
 }
 
+/** Longest run of lines (a whole conversation) that `withoutRepeats` recognizes as said twice in a row. */
+const MAX_REPEAT_BLOCK = 16;
+
+/**
+ * The journal without back-to-back repeats: a line, or a whole block of lines (talking to someone twice,
+ * getting caught by the same guard again), that matches what came right before it is left out.
+ */
+export function withoutRepeats(log: readonly LogEntry[]): LogEntry[] {
+  const out: LogEntry[] = [];
+  const same = (a: LogEntry, b: LogEntry): boolean => a[0] === b[0] && a[1] === b[1];
+  let i = 0;
+  next: while (i < log.length) {
+    for (let len = Math.min(MAX_REPEAT_BLOCK, out.length, log.length - i); len >= 1; len--) {
+      let repeated = true;
+      for (let k = 0; k < len && repeated; k++) repeated = same(log[i + k], out[out.length - len + k]);
+      if (repeated) {
+        i += len;
+        continue next;
+      }
+    }
+    out.push(log[i]);
+    i++;
+  }
+  return out;
+}
+
+/** Flags of removed items, dropped from older saves. */
+const REMOVED_FLAGS: readonly string[] = ['got:charqui'];
+
 /**
  * Saved data comes from the browser, so validate it before trusting it.
  * Older saves are upgraded to the current format.
@@ -221,11 +250,12 @@ function migrate(value: unknown): SaveData | null {
   if (typeof v.era !== 'string' || !(ERA_IDS as readonly string[]).includes(v.era)) return null;
   if (!Array.isArray(v.items) || !Array.isArray(v.flags)) return null;
 
+  // Items that no longer exist (e.g. the old charqui) are simply dropped.
   const items = v.items
     .map((item) => (item === 'coal' ? 'charcoal' : item))
     .filter((item): item is ItemId => typeof item === 'string' && (ITEM_IDS as readonly string[]).includes(item));
   const flags = v.flags
-    .filter((flag): flag is string => typeof flag === 'string' && flag.length < 64)
+    .filter((flag): flag is string => typeof flag === 'string' && flag.length < 64 && !REMOVED_FLAGS.includes(flag))
     .map((flag) => (flag === 'got:coal' ? 'got:charcoal' : flag));
 
   let checkpoint: Checkpoint | null = null;

@@ -268,9 +268,6 @@ export function buildItem(item: ItemId): THREE.Group {
     case 'pali':
       g.add(ball(0.11, '#a8783a', 0, 0, 0, o, 10));
       break;
-    case 'charqui':
-      for (let i = 0; i < 3; i++) g.add(box(0.06, 0.03, 0.26, i % 2 ? '#7a2a1a' : '#a84a2a', -0.07 + i * 0.07, 0, 0, o));
-      break;
     case 'deck': {
       // A hacker's cyberdeck: a chunky keyboard base with a flip-up glowing screen, covered in stickers.
       g.add(box(0.34, 0.06, 0.22, '#c8ccd8', 0, 0, 0.02, o));
@@ -407,6 +404,28 @@ export interface DecorRig {
   update(time: number): void;
 }
 
+/** White METRO lettering on a blue band, drawn once into a texture. */
+let metroTexture: THREE.CanvasTexture | null = null;
+function metroLabel(): THREE.CanvasTexture {
+  if (metroTexture) return metroTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#2a4a8a';
+    ctx.fillRect(0, 0, 128, 32);
+    ctx.fillStyle = '#e6e2d6';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('METRO', 64, 17);
+  }
+  metroTexture = new THREE.CanvasTexture(canvas);
+  metroTexture.colorSpace = THREE.SRGBColorSpace;
+  return metroTexture;
+}
+
 /** Set dressing that doesn't fit the tile grid: statues, flags, skeletons, holograms. */
 export function buildDecor(kind: DecorKind): DecorRig {
   const root = new THREE.Group();
@@ -429,6 +448,30 @@ export function buildDecor(kind: DecorKind): DecorRig {
       }
       root.add(box(0.9, 0.35, 1.6, bone, 0, 1.55, -3.9, { outline: true }));
       for (const z of [-2.2, 1.5]) root.add(cylinder(0.04, 0.04, 1.5, '#5a5a62', 0, 0.75, z));
+      return still;
+    }
+    case 'metrosign': {
+      // Metro de Madrid's rhombus: a red diamond crossed by a blue band reading METRO, rusted after decades of drought.
+      const sign = new THREE.Group();
+      sign.position.set(0, 1.6, -0.3);
+      // Leaning back towards the high camera, so the diamond reads from above instead of edge-on.
+      sign.rotation.set(-0.75, 0, 0.12);
+      sign.scale.setScalar(1.3);
+      const red = box(0.6, 0.6, 0.04, '#b8322a', 0, 0, 0, { outline: true });
+      red.rotation.z = Math.PI / 4;
+      const inner = box(0.44, 0.44, 0.02, '#e6dccb', 0, 0, 0.025);
+      inner.rotation.z = Math.PI / 4;
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.22, 0.04), [
+        toon('#2a4a8a'),
+        toon('#2a4a8a'),
+        toon('#2a4a8a'),
+        toon('#2a4a8a'),
+        new THREE.MeshBasicMaterial({ map: metroLabel() }),
+        toon('#2a4a8a'),
+      ]);
+      band.position.z = 0.05;
+      sign.add(red, inner, band, box(0.12, 0.08, 0.01, '#7a4a2a', 0.18, -0.2, 0.04), box(0.08, 0.1, 0.01, '#7a4a2a', -0.2, 0.17, 0.04));
+      root.add(cylinder(0.04, 0.05, 1.6, '#6a4a3a', 0, 0.8, -0.3), sign);
       return still;
     }
     case 'hachiko': {

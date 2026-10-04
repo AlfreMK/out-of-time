@@ -236,7 +236,7 @@ async function arrive(w: WorldApi, firstVisit: boolean, pip: CompanionHandle): P
     await w.wait(0.6);
     await w.say([Speaker.Andrew, "First things first: let's see how bad the damage is."]);
     await diagnose(w);
-    await w.say('Move with WASD, the arrow keys or the left stick. Press {interact} to interact.');
+    await w.say('Move with {move}. Press {interact} to interact.');
     return;
   }
   if (!w.flag(progress.diagnosed('prehistory'))) await diagnose(w);

@@ -33,7 +33,6 @@ export const ITEMS: Record<ItemId, ItemInfo> = {
   canelo: { name: 'Foye Bark', kind: 'quest', era: 'araucania' },
   maqui: { name: 'Maqui', kind: 'quest', era: 'araucania' },
   pali: { name: 'Pali Ball', kind: 'quest', era: 'araucania' },
-  charqui: { name: 'Charqui', kind: 'tool', era: 'araucania' },
   // Neo-Tokyo
   clock: { name: 'Optical Clock', kind: 'part', era: 'future' },
   tape: { name: 'Superconductor', kind: 'part', era: 'future' },
@@ -51,7 +50,7 @@ export const ITEMS: Record<ItemId, ItemInfo> = {
 };
 
 /** Items used with the throw/use button, in cycling order. */
-export const TOOLS: readonly ItemId[] = ['pebbles', 'bread', 'charqui', 'pifilka'];
+export const TOOLS: readonly ItemId[] = ['pebbles', 'bread', 'pifilka'];
 
-/** Thrown food lures animals (the dog in Cologne, the Spanish war dog). */
-export const FOODS: readonly ItemId[] = ['bread', 'charqui'];
+/** Thrown food lures animals (Cologne's rye bread works on Brutus and on the Spanish war dog). */
+export const FOODS: readonly ItemId[] = ['bread'];

@@ -103,18 +103,24 @@ function staticView(entity: Entity, object: THREE.Object3D, lift = 0): EntityVie
 
 function playerView(player: Player, world: World): EntityView {
   const rig = buildHuman('andrew');
+  // The shield joins the model before its silhouette: added later, it would draw before Andrew's
+  // ghost and turn blue whenever it hides his body from the camera (walking north).
+  const shield = buildBackShield();
+  shield.position.set(0, 0.62, -0.2);
+  shield.rotation.y = Math.PI;
+  rig.root.add(shield);
+  const shieldMeshes: THREE.Mesh[] = [];
+  shield.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.name !== 'outline') shieldMeshes.push(child);
+  });
   // Own materials so the player can fade while hidden without affecting anyone else.
   const fading: THREE.Material[] = [];
-  for (const mesh of rig.meshes) {
+  for (const mesh of [...rig.meshes, ...shieldMeshes]) {
     const material = (mesh.material as THREE.Material).clone();
     mesh.material = material;
     fading.push(material);
   }
   const ghosts = addSilhouette(rig.root, SILHOUETTE);
-  const shield = buildBackShield();
-  shield.position.set(0, 0.62, -0.2);
-  shield.rotation.y = Math.PI;
-  rig.root.add(shield);
 
   let lift = 0;
   return {

@@ -28,21 +28,23 @@ npm run dev        # http://localhost:5173
 
 ## Controls
 
-Keyboard and gamepads (Xbox, PlayStation and other standard controllers) both work. On-screen button prompts follow whichever you used last.
+Keyboard, gamepads (Xbox, PlayStation and other standard controllers) and touch screens all work. On-screen button prompts follow whichever you used last.
 
-| Action | Keyboard | Xbox | PlayStation |
-| --- | --- | --- | --- |
-| Move | WASD / Arrows | Left stick / D-pad | Left stick / D-pad |
-| Interact / advance dialogue | E / Space / Enter | A | ✕ |
-| Sneak (silent footsteps) | Hold Shift | Hold B or LT (or tilt the stick gently) | Hold ○ or L2 (or tilt gently) |
-| Use selected item | F | X or RT | □ or R2 |
-| Switch item | Q | Y | △ |
-| Pause (journal, goal, inventory) | Esc / P | Menu | Options |
-| Mute | M | | |
+| Action | Keyboard | Xbox | PlayStation | Touch |
+| --- | --- | --- | --- | --- |
+| Move | WASD / Arrows | Left stick / D-pad | Left stick / D-pad | Joystick (drag anywhere on the left half) |
+| Interact / advance dialogue | E / Space / Enter | A | ✕ | A |
+| Sneak (silent footsteps) | Hold Shift | Hold B or LT (or tilt the stick gently) | Hold ○ or L2 (or tilt gently) | Hold B (or drag the joystick gently) |
+| Use selected item | F | X or RT | □ or R2 | X |
+| Switch item | Q | Y | △ | Y |
+| Pause (journal, goal, inventory) | Esc / P | Menu | Options | Menu |
+| Mute | M | | | Pause menu → Sound |
 
-**Saving:** progress is stored in the browser (`localStorage`) every time you reach a checkpoint, pick something up or finish a story beat. **Continue** on the title screen resumes from your last checkpoint.
+**Phones and tablets:** play in landscape (the game asks you to turn the phone sideways). On Android the ⛶ button goes fullscreen; on iPhone, *Share → Add to Home Screen* opens the game without the browser bars.
 
-**Lost?** The pause menu shows your current goal and a **journal** with every line of dialogue so far.
+**Saving:** progress is stored in the browser (`localStorage`) every time you reach a checkpoint, pick something up or finish a story beat. Besides each era's fixed checkpoints, any quiet spot out of reach of every patrol (and away from sleeping beasts) becomes one as you walk through it, so being caught never sends you back past an enemy you already slipped by. **Continue** on the title screen resumes from your last checkpoint.
+
+**Lost?** The pause menu shows your current goal and a **journal** with every line of dialogue so far (conversations repeated back to back show once). Scroll it with Up/Down (hold to keep going), page with Left/Right, or use the mouse wheel.
 
 **Testing cheat:** type `letmetest` during play (like the old GTA codes) to toggle **god mode**: enemies can't see or catch you, hazards don't hurt you and you walk twice as fast. While it's on, the pause menu gets a **Debug** entry: give all items, unlock all eras, warp to any era, or repair the machine in the current era. God mode is never saved.
 
@@ -96,7 +98,7 @@ There is no combat. Enemies are moving puzzles:
 ```
 src/
   main.ts                 Entry point
-  engine/                 Framework-agnostic basics: screen, keyboard + gamepad input, procedural audio, text
+  engine/                 Framework-agnostic basics: screen, keyboard + gamepad + touch input, procedural audio, text
   game/
     game.ts               Main loop and scene transitions
     flow.ts               New game, continue from checkpoint, travel, ending

@@ -1,6 +1,7 @@
 import { AudioEngine } from '../engine/audio.ts';
 import { Input } from '../engine/input.ts';
 import { Screen, VIEW_H, VIEW_W } from '../engine/screen.ts';
+import { TouchControls } from '../engine/touch.ts';
 import { GameState } from './state.ts';
 
 export interface Scene {
@@ -16,6 +17,7 @@ export class Game {
   readonly screen: Screen;
   readonly input = new Input();
   readonly audio = new AudioEngine();
+  private readonly touch: TouchControls;
   state = new GameState();
   /** Debug cheat, toggled by typing "letmetest". Never saved. */
   godMode = false;
@@ -29,6 +31,7 @@ export class Game {
 
   constructor(parent: HTMLElement) {
     this.screen = new Screen(parent);
+    this.touch = new TouchControls(parent, this.input);
     this.input.onGesture(() => this.audio.unlock());
     this.input.onCheat('letmetest', (cleared) => {
       this.godMode = !this.godMode;
@@ -63,6 +66,7 @@ export class Game {
     this.last = now;
     this.time += dt;
     this.input.poll();
+    this.touch.sync();
 
     if (this.input.wasPressed('mute')) this.audio.toggleMute();
 

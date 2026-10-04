@@ -27,12 +27,14 @@ interface Recorded {
   /** Markers of characters that physically block their tile (people, the machine, the T. rex). */
   solids: string[];
   areas: Array<{ area: string | TileRect; what: string }>;
-  routes: Array<{ route: string; kind: string }>;
+  routes: Array<{ route: string; kind: string; posted: boolean }>;
   gates: string[];
+  /** Hidden allies present from the start (not ones spawned later by a flag). */
+  allies: string[];
 }
 
 function record(def: EraDef): Recorded {
-  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [] };
+  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [], allies: [] };
   const point = (marker: string, what: string, mustWalk = true): void => {
     rec.points.push({ marker, what, mustWalk });
   };
@@ -55,7 +57,7 @@ function record(def: EraDef): Recorded {
     fadeOut: async () => {},
     fadeIn: async () => {},
     machineGlitch: noop,
-    watcher: (spec) => rec.routes.push({ route: spec.route, kind: spec.kind }),
+    watcher: (spec) => rec.routes.push({ route: spec.route, kind: spec.kind, posted: spec.posted === true }),
     npc: (spec) => (point(spec.marker, `npc ${spec.name}`), rec.solids.push(spec.marker), handle),
     pickup: (spec) => point(spec.marker, `pickup ${spec.item}`),
     trigger: (spec) => rec.areas.push({ area: spec.area, what: 'trigger' }),
@@ -70,7 +72,7 @@ function record(def: EraDef): Recorded {
     gate: (spec) => (point(spec.marker, `gate ${spec.look}`), rec.gates.push(spec.marker), gateHandle),
     decor: (marker) => point(marker, 'decor', false),
     decorEach: (marker) => (point(marker, 'decor', false), []),
-    ally: (spec) => (point(spec.marker, `ally ${spec.name}`), handle),
+    ally: (spec) => (point(spec.marker, `ally ${spec.name}`), rec.allies.push(spec.marker), handle),
     disable: noop,
     alarm: noop,
     enterYear: async () => 0,
@@ -294,6 +296,13 @@ function validate(def: EraDef): void {
     if (reachable(map, start, at('Y'), (tx, ty) => pack.has(`${tx},${ty}`))) fail(def.id, "the nomad is reachable without crossing the dogs' beat");
   }
 
+  // A posted sentry only leaves for a war horn: some ally's horn (150 px) has to reach it, or it never moves.
+  for (const { route, posted } of rec.routes) {
+    if (!posted || !map.hasMarker(route[0])) continue;
+    const post = map.marker(route[0]);
+    const heard = rec.allies.some((a) => map.hasMarker(a) && Math.hypot(map.marker(a).tx - post.tx, map.marker(a).ty - post.ty) * 16 <= 150);
+    if (!heard) fail(def.id, `the sentry posted at "${route[0]}" is out of reach of every ally's horn, so nothing can move it`);
+  }
   console.log(`${def.id}: ${map.width}x${map.height}, ${rec.points.length} spawns, ${rec.routes.length} patrols, ${rec.areas.length} areas`);
 }
 

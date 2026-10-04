@@ -76,6 +76,7 @@ export const RUINS: EraDef = {
     w.inspect('W', 'Faded sign', (w) =>
       w.say('A faded sign: "Río Manzanares".', [Speaker.Andrew, 'The river that ran through Madrid. Now it is just a ribbon of sand.']),
     );
+    w.decor('V', 'metrosign');
     w.inspect('V', 'Metro sign', (w) =>
       w.say(
         'A rusted, diamond-shaped sign: METRO.',

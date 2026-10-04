@@ -13,7 +13,7 @@ export type Action =
   | 'skip';
 
 /** Which controls the player used last; drives the button prompts on screen. */
-export type Device = 'keyboard' | 'xbox' | 'playstation';
+export type Device = 'keyboard' | 'xbox' | 'playstation' | 'touch';
 
 const KEYMAP: Record<string, Action[]> = {
   ArrowUp: ['up'],
@@ -61,18 +61,36 @@ const GLYPHS: Record<Device, Partial<Record<Action, string>>> = {
   keyboard: { interact: 'E', sneak: 'Shift', throw: 'F', cycle: 'Q', pause: 'Esc', back: 'Esc' },
   xbox: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'Y', pause: 'Menu', back: 'B' },
   playstation: { interact: '✕', sneak: '○', throw: '□', cycle: '△', pause: 'Options', back: '○' },
+  // The on-screen buttons are laid out and lettered like a gamepad (see TouchControls).
+  touch: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'Y', pause: 'Menu', back: 'Menu' },
+};
+
+/** How movement is described in tutorial text ({move}). */
+const MOVE_HINT: Record<Device, string> = {
+  keyboard: 'WASD or the arrow keys',
+  xbox: 'the left stick',
+  playstation: 'the left stick',
+  touch: 'the joystick on the left',
 };
 
 const DEADZONE = 0.22;
+
+const padDevice = (pad: Gamepad): Device => (/playstation|dualsense|dualshock|054c|wireless controller/i.test(pad.id) ? 'playstation' : 'xbox');
 
 export class Input {
   device: Device = 'keyboard';
   private readonly keysHeld = new Set<Action>();
   private padHeld = new Set<Action>();
+  private readonly touchHeld = new Set<Action>();
+  private touchDirs = new Set<Action>();
+  private touchX = 0;
+  private touchY = 0;
   private readonly pressed = new Set<Action>();
   private stickX = 0;
   private stickY = 0;
   private readonly gestureListeners: Array<() => void> = [];
+  /** Mouse wheel travel (px) not yet turned into whole lines by `wheelLines()`. */
+  private wheel = 0;
   /** Recently typed letters, for GTA-style cheat codes. */
   private typed = '';
   private readonly cheats = new Map<string, (cleared: ReadonlySet<Action>) => void>();
@@ -93,9 +111,61 @@ export class Input {
     window.addEventListener('keyup', (e) => {
       for (const action of KEYMAP[e.code] ?? []) this.keysHeld.delete(action);
     });
-    window.addEventListener('pointerdown', () => this.notifyGesture());
+    window.addEventListener('pointerdown', (e) => {
+      // Only a real finger brings up the touch controls; a mouse click puts them away again.
+      if (e.pointerType === 'touch') this.device = 'touch';
+      else if (this.device === 'touch') this.device = 'keyboard';
+      this.notifyGesture();
+    });
+    // Plugging in a controller puts the touch controls away straight away, before any button is pressed.
+    window.addEventListener('gamepadconnected', (e) => {
+      if (this.device === 'touch') this.device = padDevice(e.gamepad);
+    });
+    window.addEventListener('wheel', (e) => (this.wheel += e.deltaMode === 0 ? e.deltaY : e.deltaY * 30), { passive: true });
+    // iOS only lets audio start from the end of a touch, not its start.
+    window.addEventListener('touchend', () => this.notifyGesture());
     // Avoid "stuck" keys when the window loses focus mid-press.
-    window.addEventListener('blur', () => this.keysHeld.clear());
+    window.addEventListener('blur', () => {
+      this.keysHeld.clear();
+      this.releaseTouch();
+    });
+    // Phones and tablets: touch is the main input and there is no mouse to hover with.
+    // Touchscreen laptops report a fine, hovering pointer and start on the keyboard.
+    if (window.matchMedia('(pointer: coarse) and (hover: none)').matches) this.device = 'touch';
+  }
+
+  /** An on-screen button went down. */
+  touchDown(actions: readonly Action[]): void {
+    this.device = 'touch';
+    for (const action of actions) {
+      if (!this.touchHeld.has(action)) this.pressed.add(action);
+      this.touchHeld.add(action);
+    }
+  }
+
+  touchUp(actions: readonly Action[]): void {
+    for (const action of actions) this.touchHeld.delete(action);
+  }
+
+  /** The on-screen joystick, from -1 to 1 on each axis (0, 0 when released). It also works as a D-pad in menus. */
+  touchStick(x: number, y: number): void {
+    // No device switch here: releasing the stick (also on blur) must not bring the touch controls back.
+    this.touchX = x;
+    this.touchY = y;
+    const dirs = new Set<Action>();
+    if (y < -0.5) dirs.add('up');
+    if (y > 0.5) dirs.add('down');
+    if (x < -0.5) dirs.add('left');
+    if (x > 0.5) dirs.add('right');
+    for (const action of dirs) {
+      if (!this.touchDirs.has(action)) this.pressed.add(action);
+    }
+    this.touchDirs = dirs;
+  }
+
+  releaseTouch(): void {
+    this.touchHeld.clear();
+    this.touchStick(0, 0);
   }
 
   /** Reads the first connected gamepad. Call once per frame, before game logic. */
@@ -126,7 +196,7 @@ export class Input {
         if (!this.padHeld.has(action)) this.pressed.add(action);
       }
       if (held.size > 0) {
-        this.device = /playstation|dualsense|dualshock|054c|wireless controller/i.test(pad.id) ? 'playstation' : 'xbox';
+        this.device = padDevice(pad);
         this.notifyGesture();
       }
     }
@@ -134,7 +204,7 @@ export class Input {
   }
 
   isHeld(action: Action): boolean {
-    return this.keysHeld.has(action) || this.padHeld.has(action);
+    return this.keysHeld.has(action) || this.padHeld.has(action) || this.touchHeld.has(action) || this.touchDirs.has(action);
   }
 
   wasPressed(action: Action): boolean {
@@ -154,6 +224,7 @@ export class Input {
    */
   get move(): { x: number; y: number; analog: boolean } {
     if (this.stickX !== 0 || this.stickY !== 0) return { x: this.stickX, y: this.stickY, analog: true };
+    if (this.touchX !== 0 || this.touchY !== 0) return { x: this.touchX, y: this.touchY, analog: true };
     let x = 0;
     let y = 0;
     if (this.keysHeld.has('left') || this.padHeld.has('left')) x -= 1;
@@ -169,9 +240,11 @@ export class Input {
     return GLYPHS[this.device][action] ?? action;
   }
 
-  /** Replaces {interact}, {sneak}, {throw}, {cycle} and {pause} with the current device's buttons. */
+  /** Replaces {interact}, {sneak}, {throw}, {cycle} and {pause} with the current device's buttons, and {move} with its movement controls. */
   format(text: string): string {
-    return text.replace(/\{(interact|sneak|throw|cycle|pause|back)\}/g, (_, action: Action) => this.glyph(action));
+    return text
+      .replace(/\{(interact|sneak|throw|cycle|pause|back)\}/g, (_, action: Action) => this.glyph(action))
+      .replace(/\{move\}/g, MOVE_HINT[this.device]);
   }
 
   /** Registers a cheat code: typing these letters in a row (anywhere in the game) runs the callback. */
@@ -195,6 +268,13 @@ export class Input {
   /** Called on every key press, click or button press (browsers only allow audio after one). */
   onGesture(listener: () => void): void {
     this.gestureListeners.push(listener);
+  }
+
+  /** Whole lines scrolled with the mouse wheel since the last call (positive = down). */
+  wheelLines(): number {
+    const lines = Math.trunc(this.wheel / 30);
+    this.wheel -= lines * 30;
+    return lines;
   }
 
   endFrame(): void {

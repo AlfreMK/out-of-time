@@ -19,6 +19,8 @@ export interface Barks {
   suspicious: string[];
   investigate: string[];
   giveUp: string[];
+  /** A `posted` watcher shrugging off a small noise. */
+  holdPost: string[];
 }
 
 export interface WatcherSpec {
@@ -44,6 +46,13 @@ export interface WatcherSpec {
   barks?: Partial<Barks>;
   /** Starts powered down: blind and deaf to footsteps, it only wakes for a loud noise (glass, an alarm), then goes back to sleep at its post. */
   dormant?: boolean;
+  /**
+   * Holds a fixed post: a small noise (a thrown pebble, crunching glass) only draws a remark, and footsteps only
+   * make it turn its head. Only a war horn (the scouts' trutruka) makes it leave.
+   */
+  posted?: boolean;
+  /** Runs when a `posted` watcher shrugs off a small noise (e.g. Andrew realizing pebbles won't work here). */
+  onHoldPost?: Script;
   /** Draws a guard as another character (e.g. the forester). Doesn't change how it behaves. */
   look?: NpcLook;
 }
@@ -108,7 +117,7 @@ export interface AllySpec {
 }
 
 /** Set dressing that doesn't fit the tile grid. */
-export type DecorKind = 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol';
+export type DecorKind = 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol' | 'metrosign';
 
 export interface MusicZone {
   area: string | TileRect;

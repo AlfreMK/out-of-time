@@ -53,6 +53,7 @@ export const Flag = {
   AraPipLautaro: 'ara:pipLautaro',
   AraPipMachi: 'ara:pipMachi',
   AraPipRayen: 'ara:pipRayen',
+  AraPostHint: 'ara:postHint',
   AraRayenDog: 'ara:rayenDog',
   AraTrunk: 'ara:trunk',
   // Neo-Tokyo, 2087

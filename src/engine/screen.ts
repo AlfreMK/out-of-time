@@ -37,7 +37,9 @@ export class Screen {
     const fit = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
     const cssW = Math.floor(VIEW_W * fit);
     const cssH = Math.floor(VIEW_H * fit);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Phones have very dense screens but modest GPUs: cap the 3D resolution lower there.
+    const maxDpr = window.matchMedia('(pointer: coarse)').matches ? 1.5 : 2;
+    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
 
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(cssW, cssH);

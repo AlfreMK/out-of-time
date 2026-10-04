@@ -315,7 +315,9 @@ export function buildTerrain(map: TileMap): Terrain {
           wall.add('block', cx, 1.16, cz + 0.535, '#5a3a1e', [1, 0.1, 0.06]);
           if (look === 'housedoor') batch.add('block', cx, 0, cz + 0.5, '#6a4424', [0.55, 0.95, 0.06]);
           else if (look === 'panel') {
-            batch.add('block', cx, 0, cz + 0.5, '#5a5e65', [0.7, 1.05, 0.08]);
+            // A small control box at chest height, so it doesn't read as a second door next to the real one.
+            batch.add('block', cx, 0.42, cz + 0.5, '#5a5e65', [0.42, 0.42, 0.08]);
+            for (let i = 0; i < 3; i++) batch.add('block', cx - 0.12 + i * 0.12, 0.48, cz + 0.545, ['#ff5a5a', '#f1c232', '#5aff8a'][i], [0.05, 0.05, 0.02]);
             const glow = new THREE.MeshBasicMaterial({ color: '#4ff0ff' });
             glows.push({ material: glow, base: glow.color.clone() });
             const screen = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.04), glow);

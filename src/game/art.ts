@@ -87,10 +87,6 @@ export const ITEM_SPRITES: Record<ItemId, Sprite> = {
     ['........', '..bbbb..', '.bBbbbb.', '.bbbbbb.', '.bbbbbb.', '.bbbbbd.', '..bddd..', '........'],
     { b: '#a8783a', B: '#d8a868', d: '#6a4a2a' },
   ),
-  charqui: makeSprite(
-    ['........', '.rrr....', 'rRrrr...', '.rrrrr..', '..rrRrr.', '...rrrr.', '....rr..', '........'],
-    { r: '#7a2a1a', R: '#a84a2a' },
-  ),
   clock: makeSprite(
     ['.cccccc.', 'cbbbbbbc', 'cbmbbmbc', 'cbbppbbc', 'cbbppbbc', 'cbmbbmbc', 'cbbbbbbc', '.cccccc.'],
     { c: '#9aa6bb', b: '#1a1d2a', p: '#ff6bd6', m: '#7fd8ff' },

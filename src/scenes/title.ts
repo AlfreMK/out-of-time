@@ -71,12 +71,13 @@ export class TitleScene implements Scene {
         color: selected ? '#ffffff' : '#8a90b0',
       });
     });
-    // The control hints follow whatever was used last: keyboard or a controller.
+    // The control hints follow whatever was used last: keyboard, a controller or the touch screen.
     const input = this.game.input;
+    const stick = input.device === 'touch' ? 'Joystick' : 'Left stick';
     const hints =
       input.device === 'keyboard'
         ? 'WASD/Arrows move · E/Space interact · Shift sneak · F use · Q switch · M mute'
-        : `Left stick move · ${input.glyph('interact')} interact · ${input.glyph('sneak')} sneak · ${input.glyph('throw')} use · ${input.glyph('cycle')} switch · ${input.glyph('pause')} pause`;
+        : `${stick} move · ${input.glyph('interact')} interact · ${input.glyph('sneak')} sneak · ${input.glyph('throw')} use · ${input.glyph('cycle')} switch · ${input.glyph('pause')} pause`;
     drawText(ui, hints, cx, VIEW_H - 9, {
       size: 5.5,
       align: 'center',
