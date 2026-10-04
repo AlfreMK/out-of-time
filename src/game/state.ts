@@ -1,3 +1,4 @@
+import { Flag, progress, type FlagName } from './flags.ts';
 export type EraId = 'prehistory' | 'medieval' | 'araucania' | 'future' | 'ruins';
 
 export type ItemId =
@@ -31,6 +32,10 @@ export type ItemId =
   | 'deck'
   // The Long Drought
   | 'notes'
+  | 'water'
+  | 'quartz'
+  | 'emitter'
+  | 'navmodule'
   | 'core';
 
 /** Eras in story order. */
@@ -62,8 +67,33 @@ export const ITEM_IDS: readonly ItemId[] = [
   'powercell',
   'deck',
   'notes',
+  'water',
+  'quartz',
+  'emitter',
+  'navmodule',
   'core',
 ];
+
+/** Machine parts consumed by each era's repair. Older saves kept them in the bag. */
+const INSTALLED_PARTS: Partial<Record<EraId, ItemId[]>> = {
+  prehistory: ['amber', 'obsidian', 'meteorite'],
+  medieval: ['gear', 'quicksilver'],
+  araucania: ['gold', 'lodestone'],
+  future: ['clock', 'tape'],
+};
+
+/** Brings saves from earlier versions of the story in line with the current, linear one. */
+function upgrade(state: GameState): void {
+  for (const era of ERA_IDS) {
+    if (state.flag(progress.fixed(era))) for (const part of INSTALLED_PARTS[era] ?? []) state.take(part);
+  }
+  // Pike's caches hold upgrades now: the nav module (Hell Creek) and the field emitter (Cologne).
+  if (state.flag(progress.visited('araucania'))) state.setFlag(Flag.NavInstalled);
+  else if (state.flag(progress.got('recorder')) && !state.flag(Flag.NavInstalled)) state.give('navmodule');
+  if (state.flag(progress.got('notes')) && !state.flag(Flag.EmitterInstalled)) state.give('emitter');
+  // Pip travels with Andrew from the Cologne repair on.
+  if (state.flag(Flag.PipFriend) && state.flag(progress.visited('araucania')) && !state.flag(Flag.RuinsPipHome)) state.setFlag(Flag.PipAboard);
+}
 
 const SAVE_KEY = 'out-of-time.save';
 const LEGACY_SAVE_KEY = 'out-of-time.save.v1';
@@ -109,11 +139,11 @@ export class GameState {
     this.items.delete(item);
   }
 
-  flag(name: string): boolean {
+  flag(name: FlagName): boolean {
     return this.flags.has(name);
   }
 
-  setFlag(name: string, on = true): void {
+  setFlag(name: FlagName, on = true): void {
     if (on) this.flags.add(name);
     else this.flags.delete(name);
   }
@@ -155,6 +185,7 @@ export class GameState {
       data.flags.forEach((flag) => state.flags.add(flag));
       state.checkpoint = data.checkpoint;
       state.log.push(...data.log.slice(-MAX_LOG));
+      upgrade(state);
       return state;
     } catch {
       return null;

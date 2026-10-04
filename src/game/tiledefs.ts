@@ -45,6 +45,12 @@ export type TileLook =
   | 'ledgestone'
   | 'stairs'
   | 'balcony'
+  | 'fence'
+  | 'brushwood'
+  | 'bramble'
+  | 'crypt'
+  | 'kiln'
+  | 'millwheel'
   // Araucanía
   | 'pgrass'
   | 'quila'
@@ -89,6 +95,11 @@ export type TileLook =
   | 'lamppost'
   | 'citytree'
   | 'railing'
+  | 'viaduct'
+  | 'ramen'
+  | 'tamagaki'
+  | 'toro'
+  | 'ema'
   | 'alley'
   // The Long Drought
   | 'dust'
@@ -104,7 +115,19 @@ export type TileLook =
   | 'column'
   | 'wreck'
   | 'showcase'
-  | 'fountain';
+  | 'fountain'
+  | 'terminal'
+  | 'glassshards'
+  | 'brokencase'
+  | 'wallpanel'
+  | 'cot'
+  | 'books'
+  | 'litter'
+  | 'metrostairs'
+  | 'platform'
+  | 'tracks'
+  | 'tunnelwall'
+  | 'cistern';
 
 export interface TileDef {
   look: TileLook;
@@ -175,6 +198,17 @@ export const MEDIEVAL_TILES: TileSet = {
   '>': { look: 'ledgestone', solid: false, ledge: 'right', height: 1.2 },
   // Upper-floor balconies in the gallery walls, where the crossbowmen stand.
   '%': { look: 'balcony', solid: true, height: 1.3 },
+  // A woven wattle fence: low enough to see (and throw) over.
+  f: { look: 'fence', solid: true, low: true, seeThrough: true },
+  // The Archbishop's forest: a stream, dry brushwood that cracks underfoot, a charcoal kiln and a mill wheel.
+  w: { look: 'stream', solid: true, low: true, seeThrough: true },
+  x: { look: 'brushwood', solid: false, noise: 100 },
+  // Blackberry brambles: too thorny to walk through, but low enough to see over.
+  v: { look: 'bramble', solid: true, low: true, seeThrough: true },
+  // Pike's hidden cache under the chapel: a dark little room behind an Institute door.
+  z: { look: 'crypt', solid: false, dark: true },
+  k: { look: 'kiln', solid: true, low: true },
+  g: { look: 'millwheel', solid: true, low: true, seeThrough: true },
 };
 
 export const ARAUCANIA_TILES: TileSet = {
@@ -219,8 +253,8 @@ export const FUTURE_TILES: TileSet = {
   ',': { look: 'planter', solid: false, hide: true },
   h: { look: 'billboard', solid: true },
   v: { look: 'vending', solid: true },
-  // Taiyaki stand.
-  k: { look: 'vending', solid: true, low: true },
+  // A ramen stall (yatai) near the Yamanote tracks.
+  k: { look: 'ramen', solid: true },
   c: { look: 'techcrate', solid: true, low: true },
   s: { look: 'server', solid: true },
   u: { look: 'table', solid: true, low: true },
@@ -232,6 +266,12 @@ export const FUTURE_TILES: TileSet = {
   r: { look: 'railing', solid: true, low: true, seeThrough: true },
   // Unlit alleys: the shadows hide you.
   x: { look: 'alley', solid: false, hide: true },
+  // The Yamanote Line runs along an elevated viaduct at the bottom of the plaza.
+  j: { look: 'viaduct', solid: true },
+  // The shrine: a low wooden fence (tamagaki), stone lanterns (tōrō) and a rack of ema plaques.
+  z: { look: 'tamagaki', solid: true, low: true, seeThrough: true },
+  e: { look: 'toro', solid: true, low: true },
+  a: { look: 'ema', solid: true, low: true },
 };
 
 export const RUINS_TILES: TileSet = {
@@ -250,6 +290,27 @@ export const RUINS_TILES: TileSet = {
   d: { look: 'doorway', solid: false },
   v: { look: 'wreck', solid: true, low: true },
   k: { look: 'showcase', solid: true, low: true },
+  // Two centuries of neglect: smashed cases and visitors' litter.
+  y: { look: 'brokencase', solid: true, low: true },
+  // The museum wall beside Pike's lab door, with its dead access panel.
+  a: { look: 'wallpanel', solid: true },
+  // Pike's hideout: a camp cot and towers of books he rescued from the museum library.
+  b: { look: 'cot', solid: true, low: true },
+  h: { look: 'books', solid: true, low: true },
+  i: { look: 'litter', solid: false },
   g: { look: 'fountain', solid: true, low: true },
   l: { look: 'lamppost', solid: true, low: true },
+  // The mineral hall: a blacked-out museum wing, with an old security console by its shutter.
+  m: { look: 'marble', solid: false, dark: true },
+  // Glass from smashed showcases: it crunches underfoot, and the guide bot hears it.
+  x: { look: 'glassshards', solid: false, dark: true, noise: 80 },
+  n: { look: 'terminal', solid: true, low: true },
+  // The abandoned Metro station below the city, where the nomad hides from the heat.
+  e: { look: 'metrostairs', solid: false },
+  p: { look: 'platform', solid: false, dark: true },
+  j: { look: 'tracks', solid: false, dark: true },
+  z: { look: 'dune', solid: false, dark: true },
+  o: { look: 'tunnelwall', solid: true },
+  f: { look: 'campfire', solid: true, low: true },
+  u: { look: 'cistern', solid: true, low: true },
 };

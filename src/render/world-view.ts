@@ -5,7 +5,7 @@ import type { World } from '../game/world.ts';
 import type { Entity } from '../game/entities/entity.ts';
 import type { Watcher } from '../game/entities/watcher.ts';
 import { createView, PX, type EntityView } from './entity-views.ts';
-import { buildTerrain, type Terrain } from './terrain.ts';
+import { buildTerrain, INTERIOR_LOOKS, type Terrain } from './terrain.ts';
 
 interface Theme {
   sky: string;
@@ -34,6 +34,14 @@ const WEATHER_COUNT = 500;
 /** Where the follow camera sits relative to the player (Pizza Possum-style high angle). */
 const CAMERA_OFFSET = new THREE.Vector3(0, 13.5, 8.6);
 const CONE_RAYS = 22;
+
+/** Direction from the scene to the sun, and the size of one shadow-map texel in world units (36 m over 2048 px). */
+const SUN_OFFSET = new THREE.Vector3(6, 14, 5);
+const SHADOW_TEXEL = 36 / 2048;
+/** Rotation into the sun's view, used to snap the shadow camera to whole texels. */
+const SUN_ROTATION = new THREE.Matrix4().lookAt(SUN_OFFSET, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+const SUN_ROTATION_INV = SUN_ROTATION.clone().invert();
+const tmpSun = new THREE.Vector3();
 const MAX_PARTICLES = 400;
 
 /** Everything the player sees of a World, rebuilt from its state every frame. */
@@ -111,7 +119,8 @@ export class WorldView {
     this.syncCones();
     this.syncRings();
     this.syncParticles();
-    this.terrain.update(time);
+    const here = this.world.map.defAt(this.world.hero.x, this.world.hero.y).look;
+    this.terrain.update(time, INTERIOR_LOOKS.has(here) ? here : null);
 
     // Camera: smooth follow plus optional shake.
     const hero = this.world.hero;
@@ -124,11 +133,16 @@ export class WorldView {
     }
     this.camera.lookAt(this.focus);
 
-    // The sun (and its shadow camera) follows the player.
-    this.sun.position.set(this.focus.x + 6, 14, this.focus.z + 5);
-    this.sun.target.position.copy(this.focus);
+    // The sun (and its shadow camera) follows the player, snapped to whole shadow texels in the
+    // sun's own view. Without the snap, shadow edges shimmer on roofs and walls as the camera moves.
+    tmpSun.copy(this.focus).applyMatrix4(SUN_ROTATION_INV);
+    tmpSun.x = Math.round(tmpSun.x / SHADOW_TEXEL) * SHADOW_TEXEL;
+    tmpSun.y = Math.round(tmpSun.y / SHADOW_TEXEL) * SHADOW_TEXEL;
+    tmpSun.applyMatrix4(SUN_ROTATION);
+    this.sun.target.position.copy(tmpSun);
+    this.sun.position.copy(tmpSun).add(SUN_OFFSET);
 
-    // Entering a cave dims the world and switches on Elias's pocket lamp.
+    // Entering a cave dims the world and switches on Andrew's pocket lamp.
     const inDark = this.world.map.defAt(hero.x, hero.y).dark === true;
     this.darkness += ((inDark ? 1 : 0) - this.darkness) * Math.min(1, dt * 2.5);
     const d = this.darkness;
@@ -236,7 +250,8 @@ export class WorldView {
         geometry.setIndex(index);
         cone = new THREE.Mesh(
           geometry,
-          new THREE.MeshBasicMaterial({ color: '#ffe680', transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }),
+          // Drawn on top of scenery, so a guard's view is never hidden under the canopy.
+          new THREE.MeshBasicMaterial({ color: '#ffe680', transparent: true, opacity: 0.25, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
         );
         cone.renderOrder = 3;
         cone.frustumCulled = false;

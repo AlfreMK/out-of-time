@@ -3,6 +3,7 @@ import type { Input } from '../engine/input.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
 import { drawText, FONT_FAMILY, wrapText } from '../engine/text.ts';
 import type { Line } from '../eras/types.ts';
+import { Speaker, type SpeakerName } from './speakers.ts';
 
 /** Rounded dark panel with a thin gold border, in logical UI units. */
 export function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, alpha = 0.86): void {
@@ -22,19 +23,19 @@ interface ParsedLine {
   text: string;
 }
 
-const SPEAKER_COLORS: Record<string, string> = {
-  Elias: '#7fd8ff',
-  Nora: '#ffb37a',
-  'Nora (radio)': '#ffb37a',
-  Pip: '#f0c060',
-  Pike: '#c9a0ff',
-  Lautaro: '#ff8a6a',
-  'Brother Albert': '#e8e0cc',
-  'Brother Thomas': '#e8e0cc',
+const SPEAKER_COLORS: Partial<Record<SpeakerName, string>> = {
+  [Speaker.Andrew]: '#7fd8ff',
+  [Speaker.Nora]: '#ffb37a',
+  [Speaker.NoraRadio]: '#ffb37a',
+  [Speaker.Pip]: '#f0c060',
+  [Speaker.Pike]: '#c9a0ff',
+  [Speaker.Lautaro]: '#ff8a6a',
+  [Speaker.BrotherAlbert]: '#e8e0cc',
+  [Speaker.BrotherThomas]: '#e8e0cc',
 };
 
 export function speakerColor(speaker: string): string {
-  return SPEAKER_COLORS[speaker] ?? '#f1c232';
+  return SPEAKER_COLORS[speaker as SpeakerName] ?? '#f1c232';
 }
 
 /** Bottom-of-screen dialogue box with a typewriter effect. */

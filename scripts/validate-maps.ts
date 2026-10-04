@@ -65,11 +65,14 @@ function record(def: EraDef): Recorded {
     obstacle: (spec) => (point(spec.marker, `obstacle ${spec.look}`), handle),
     machine: (marker) => (point(marker, 'machine', false), rec.solids.push(marker)),
     inspect: (marker) => point(marker, 'inspect', false),
+    inspectEach: (marker) => point(marker, 'inspect', false),
     checkpoint: (marker) => point(marker, 'checkpoint'),
     gate: (spec) => (point(spec.marker, `gate ${spec.look}`), rec.gates.push(spec.marker), gateHandle),
     decor: (marker) => point(marker, 'decor', false),
+    decorEach: (marker) => (point(marker, 'decor', false), []),
     ally: (spec) => (point(spec.marker, `ally ${spec.name}`), handle),
     disable: noop,
+    alarm: noop,
     enterYear: async () => 0,
     player: handle,
     travel: async () => {},
@@ -175,14 +178,12 @@ function validate(def: EraDef): void {
   const not = (m: string): Blocked => (tx, ty) => tx === at(m).tx && ty === at(m).ty;
   const any = (...checks: Blocked[]): Blocked => (tx, ty) => checks.some((c) => c(tx, ty));
 
-  if (def.id === 'prehistory') {
-    const quiet: Blocked = (tx, ty) => map.def(tx, ty).noise !== undefined;
-    if (!reachable(map, at('X'), at('2'), quiet)) fail(def.id, 'no bone-free route from the cave entrance to the obsidian');
-    if (reachable(map, start, at('3'), not('K'))) fail(def.id, 'the meteorite is reachable without moving the boulder');
-    // Raptors guard the passages: the cave and Pip can't be reached without crossing a patrol...
+  const quiet: Blocked = (tx, ty) => map.def(tx, ty).noise !== undefined;
+  /** Tiles swept by the patrols that pass `include`: the straight segments between their route points. */
+  const lanesOf = (include: (route: string, kind: string) => boolean): Set<string> => {
     const lanes = new Set<string>();
     for (const { route, kind } of rec.routes) {
-      if (kind !== 'raptor') continue;
+      if (!include(route, kind)) continue;
       const pts = route.split('').map(at);
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
@@ -192,6 +193,14 @@ function validate(def: EraDef): void {
         }
       }
     }
+    return lanes;
+  };
+
+  if (def.id === 'prehistory') {
+    if (!reachable(map, at('X'), at('2'), quiet)) fail(def.id, 'no bone-free route from the cave entrance to the obsidian');
+    if (reachable(map, start, at('3'), not('K'))) fail(def.id, 'the meteorite is reachable without moving the boulder');
+    // Raptors guard the passages: the cave and Pip can't be reached without crossing a patrol...
+    const lanes = lanesOf((_, kind) => kind === 'raptor');
     const onLane: Blocked = (tx, ty) => lanes.has(`${tx},${ty}`);
     if (reachable(map, start, at('X'), onLane) === false) fail(def.id, 'the hub is cut off by raptor lanes');
     if (reachable(map, start, at('2'), onLane)) fail(def.id, 'the cave is reachable without crossing a raptor patrol');
@@ -210,6 +219,40 @@ function validate(def: EraDef): void {
     const sealed = any((tx, ty) => inRect(door, tx, ty), not('O'), (tx, ty) => map.get(tx, ty) === 'h' && tx === 39 && ty === 14);
     if (reachable(map, at('Z'), at('4'), sealed)) fail(def.id, 'the tower can be entered from the escape route');
     if (!reachable(map, at('4'), at('Z'))) fail(def.id, 'the escape route from the tower to the outside is broken');
+
+    // Pike's notebook is inside the crypt, behind its Institute door.
+    if (reachable(map, start, at('Q'), closedGates)) fail(def.id, "Pike's notes are reachable with the crypt door closed");
+
+    // Meister Ulrich's yard: one gate, and a lane that runs right through Brutus.
+    const yardGate: Blocked = (tx, ty) => tx === 36 && ty === 33;
+    if (reachable(map, start, at('2'), yardGate)) fail(def.id, "the charcoal is reachable without going through the yard's gate");
+    if (reachable(map, start, at('2'), not('D'))) fail(def.id, 'the charcoal is reachable without getting past Brutus');
+    if (Math.hypot(at('D').tx - 36, at('D').ty - 33) > 3) fail(def.id, 'Brutus is too far from the yard gate to guard it');
+
+    // The Archbishop's forest: the bridge is the only way in...
+    const bridge: Blocked = (tx, ty) => tx === 24 && (ty === 44 || ty === 45);
+    for (const m of ['P', 'W']) {
+      if (reachable(map, start, at(m), bridge)) fail(def.id, `forest pickup "${m}" is reachable without crossing the bridge`);
+      if (!reachable(map, at('L'), at(m), quiet)) fail(def.id, `no brushwood-free route from the bridge to "${m}"`);
+    }
+    // ...the forester's ride must be crossed...
+    const ride = lanesOf((route) => route === 'R0');
+    for (const m of ['P', 'W']) {
+      if (reachable(map, start, at(m), (tx, ty) => ride.has(`${tx},${ty}`))) fail(def.id, `forest pickup "${m}" is reachable without crossing the forester's ride`);
+    }
+    // ...and the mill means sneaking past the boar, which no patrol walks next to.
+    const boar = at('9');
+    // Passing the boar means walking within earshot of footsteps (~2 tiles), or onto brushwood it can hear.
+    const nearBoar: Blocked = (tx, ty) => {
+      const d = Math.hypot(tx - boar.tx, ty - boar.ty);
+      const crack = map.def(tx, ty).noise;
+      return d <= 2.2 || (crack !== undefined && d * 16 <= crack);
+    };
+    if (reachable(map, start, at('P'), nearBoar)) fail(def.id, 'the spinning top is reachable without sneaking past the boar');
+    for (const key of ride) {
+      const [x, y] = key.split(',').map(Number);
+      if (Math.hypot(x - boar.tx, y - boar.ty) < 3) fail(def.id, `the forester's ride passes too close to the boar (${x},${y})`);
+    }
   }
   if (def.id === 'araucania') {
     const gate = map.markerArea('U');
@@ -218,14 +261,37 @@ function validate(def: EraDef): void {
     // The Mapuche camp is only reachable through its south path, past the sentry.
     const campPath: Blocked = (tx, ty) => tx === 8 && ty === 24;
     if (reachable(map, start, at('L'), campPath)) fail(def.id, 'the camp can be entered without using the south path');
+    // The maqui glade is closed by a fallen trunk that only Pip can move.
+    if (reachable(map, start, at('4'), not('Z'))) fail(def.id, 'the maqui is reachable without moving the fallen trunk');
+    // Ayelén's brother hides behind the storehouse: his trutruka (150 px) has to reach the war dog.
+    if (Math.hypot(at('T').tx - at('R').tx, at('T').ty - at('R').ty) * 16 > 150) fail(def.id, "Ayelén's brother is too far from the war dog for his horn to matter");
   }
   if (def.id === 'future') {
     if (reachable(map, start, at('1'), closedGates)) fail(def.id, 'the lab is reachable with the laser gates closed');
     if (reachable(map, start, at('U'), closedGates)) fail(def.id, 'the lobby is reachable with the tower gate closed');
+    for (const m of ['6', '2']) if (reachable(map, start, at(m), closedGates)) fail(def.id, `depot item "${m}" is reachable with the depot door closed`);
+    if (reachable(map, start, at('1'), not('P'))) fail(def.id, 'the optical clock is reachable without getting past the blast door');
   }
   if (def.id === 'ruins') {
     if (reachable(map, start, at('P'), not('K'))) fail(def.id, "Pike's lab is reachable without moving the column");
     if (reachable(map, start, at('P'), closedGates)) fail(def.id, "Pike's lab is reachable with its door closed");
+    if (reachable(map, start, at('9'), closedGates)) fail(def.id, 'the mineral hall is reachable with its shutter closed');
+    // Every showcase can be reached without stepping on broken glass, threading in from the shutter.
+    const inside = { tx: at('7').tx + 1, ty: at('7').ty };
+    for (const c of map.markerAll('9')) {
+      const spots = [
+        { tx: c.tx + 1, ty: c.ty },
+        { tx: c.tx - 1, ty: c.ty },
+        { tx: c.tx, ty: c.ty + 1 },
+        { tx: c.tx, ty: c.ty - 1 },
+      ];
+      if (!spots.some((s) => walkable(s.tx, s.ty) && reachable(map, inside, s, quiet))) fail(def.id, `no quiet way to the showcase at ${c.tx},${c.ty}`);
+    }
+    // The nomad's station: one way down, past the feral pack's beat along the tracks.
+    const stairs: Blocked = (tx, ty) => map.def(tx, ty).look === 'metrostairs';
+    if (reachable(map, start, at('Y'), stairs)) fail(def.id, 'the Metro station is reachable without taking the stairs');
+    const pack = lanesOf((route, kind) => kind === 'dog' && route === 'IL');
+    if (reachable(map, start, at('Y'), (tx, ty) => pack.has(`${tx},${ty}`))) fail(def.id, "the nomad is reachable without crossing the dogs' beat");
   }
 
   console.log(`${def.id}: ${map.width}x${map.height}, ${rec.points.length} spawns, ${rec.routes.length} patrols, ${rec.areas.length} areas`);

@@ -3,14 +3,22 @@ import type { ItemId } from '../game/state.ts';
 import { FUTURE_TILES } from '../game/tiledefs.ts';
 import { FUTURE_MAP, FUTURE_MARKER_BASE } from './future-map.ts';
 import { ERA_INFO } from './info.ts';
-import { timeMachineMenu } from './shared.ts';
+import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { EraDef, GateHandle, Line, WorldApi } from './types.ts';
+import { Speaker } from '../game/speakers.ts';
+import { Flag, progress } from '../game/flags.ts';
 
 const PARTS: ItemId[] = ['clock', 'tape'];
 
-const BOT_CAUGHT: Line[] = [['Security Bot', 'INTRUDER DETECTED. ESCORTING YOU TO THE EXIT.'], 'You are politely but firmly marched out of the building.'];
-const DRONE_CAUGHT: Line[] = [['Drone', 'RESTRICTED AREA. LEAVE NOW OR AUTHORITIES WILL BE NOTIFIED.'], 'The drone herds you back out into the street.'];
-const CAMERA_CAUGHT: Line[] = [['Camera', 'UNAUTHORIZED PERSON DETECTED.'], 'An alarm wails. You slip away before security arrives.'];
+/** The depot door code: the year the Yamanote Line was completed as a loop (November 1925). */
+const DEPOT_CODE = 1925;
+
+const BOT_CAUGHT: Line[] = [[Speaker.SecurityBot, 'INTRUDER DETECTED. ESCORTING YOU TO THE EXIT.'], 'You are politely but firmly marched out of the building.'];
+const DRONE_CAUGHT: Line[] = [[Speaker.Drone, 'RESTRICTED AREA. LEAVE NOW OR AUTHORITIES WILL BE NOTIFIED.'], 'The drone herds you back out into the street.'];
+/** Chronos drones are as puzzled by Pip as everyone else. */
+const DRONE_BARKS = { suspicious: ['ANOMALY?', 'UNLICENSED ANIMAL DETECTED?', 'SPECIES NOT IN DATABASE?'] };
+
+const CAMERA_CAUGHT: Line[] = [[Speaker.Camera, 'UNAUTHORIZED PERSON DETECTED.'], 'An alarm wails. You slip away before security arrives.'];
 
 /*
  * World 4: Tokyo, 2087, on a night of the June rainy season (tsuyu). The Chronos
@@ -35,83 +43,198 @@ export const FUTURE: EraDef = {
   parts: PARTS,
 
   objective(w) {
-    if (!w.flag('diag:future')) return 'Check the time machine.';
-    if (!w.flag('fut:metYuki')) return 'Find a way into the Chronos Corp tower. Someone is hiding in the dark alley next to it.';
-    if (!w.flag('fixed:future')) {
+    if (!w.flag(progress.diagnosed('future'))) return 'Check the time machine.';
+    if (!w.flag(Flag.FutMetYuki)) return 'Find a way into the Chronos Corp tower. Someone is hiding in the dark alley next to it.';
+    if (!w.flag(progress.fixed('future'))) {
       const steps: string[] = [];
-      if (!w.flag('fut:canHack')) steps.push(w.has('deck') ? 'bring the cyberdeck back to Yuki' : "get Yuki's cyberdeck back from the locker in the maglev depot");
-      else if (!w.has('clock')) steps.push(w.flag('fut:towerOpen') ? 'get the optical clock from the tower lab' : 'hack the junction box in the alley to get into the Chronos Corp tower');
-      if (!w.has('tape')) steps.push('get the superconducting tape from the maglev depot (avoid the puddles)');
+      if (!w.flag(Flag.FutCanHack)) {
+        if (w.has('deck')) steps.push('bring the cyberdeck back to Yuki');
+        else steps.push(w.flag(Flag.FutDepotOpen) ? "get Yuki's cyberdeck from the maglev depot" : 'the maglev depot door needs a four-digit code: someone in the plaza south of the canal may know it');
+      } else if (!w.has('clock')) {
+        if (!w.flag(Flag.FutTowerOpen)) steps.push('hack the junction box in the alley to get into the Chronos Corp tower');
+        else if (!w.flag(Flag.FutLabOpen)) steps.push('hack the security terminal in the tower lobby to open the lab');
+        else steps.push(w.flag(Flag.FutBlastDoor) ? 'get the optical clock from the tower lab' : "a blast door is jammed behind the lab's laser: Pip's skull could move it");
+      }
+      if (!w.has('tape')) steps.push(w.flag(Flag.FutDepotOpen) ? 'get the superconducting tape from the maglev depot (avoid the puddles)' : 'get the superconducting tape from the maglev depot');
       return steps.length ? `To do: ${steps.join('; ')}.` : 'Bring the parts back to the time machine.';
     }
-    if (!w.flag('got:notes')) return 'Take the Power Cell to the sealed crypt in Cologne, 1248.';
+    if (!w.flag(progress.got('notes'))) return 'Take the Power Cell to the sealed crypt in Cologne, 1248.';
     return 'Use the time machine to travel.';
   },
 
   setup(w) {
     w.machine('M', useMachine);
+    const pip = pipAlong(w, 'S');
     w.decor('7', 'hachiko');
     w.decor('8', 'hologram');
 
     // --- People ---
     w.decor('0', 'torii');
-    w.npc({ marker: 'O', look: 'hacker', name: 'Hacker', talk: talkToYuki });
+    w.npc({ marker: 'O', look: 'hacker', name: Speaker.Hacker, talk: talkToYuki });
     w.npc({
       marker: 'N',
       look: 'priest',
-      name: 'Priest',
-      talk: (w) =>
-        w.say(
-          ['Priest', 'Welcome. Pass under the torii and you leave the noise of the city behind.'],
-          ['Priest', 'Shrines like this one have stood in Tokyo through earthquakes, fires and wars. That tower is young.'],
-          ['Elias', '(A kannushi, a Shinto priest. Some things in Tokyo outlast every corporation.)'],
-        ),
+      name: Speaker.Priest,
+      talk: async (w) => {
+        await pipReaction(
+          w,
+          Flag.FutPipPriest,
+          [Speaker.Priest, '...Oh. What an extraordinary companion you have.'],
+          [Speaker.Priest, 'We say kami can dwell in anything: a rock, a tree, a waterfall. Why not in a creature older than these islands themselves?'],
+          [Speaker.Andrew, '(He is not wrong. Pip is 66 million years old. Japan split from the mainland only 15 to 20 million years ago.)'],
+          [Speaker.Pip, '*bows his dome politely*'],
+        );
+        await w.say(
+          [Speaker.Priest, 'Welcome. Pass under the torii and you leave the noise of the city behind.'],
+          [Speaker.Priest, 'Shrines like this one have stood in Tokyo through earthquakes, fires and wars. That tower is young.'],
+          [Speaker.Andrew, '(A kannushi, a Shinto priest. Some things in Tokyo outlast every corporation.)'],
+        );
+      },
     });
     w.npc({
       marker: 'V',
       look: 'vendor',
-      name: 'Vendor',
-      talk: (w) =>
-        w.say(
-          ['Vendor', 'Ramen! Shoyu, miso, tonkotsu. Hot broth is the only cure for tsuyu.'],
-          ['Vendor', "It's tsuyu, the rainy season. It won't stop until July."],
-        ),
+      name: Speaker.Vendor,
+      talk: async (w) => {
+        await pipReaction(
+          w,
+          Flag.FutPipVendor,
+          [Speaker.Vendor, 'Irasshai! Two customers... wait. Is that a DINOSAUR? A real one?'],
+          [Speaker.Vendor, 'In my day we only had robot dogs! Does it eat ramen? I have chashu, the good kind.'],
+          [Speaker.Andrew, 'He is probably a plant-eater. Probably.'],
+          [Speaker.Pip, '*sniffs the stockpot hopefully*'],
+          [Speaker.Vendor, 'Then extra green onions for the little one. On the house!'],
+        );
+        await w.say(
+          [Speaker.Vendor, 'Irasshai! Ramen! Shoyu, miso, tonkotsu. Hot broth is the only cure for tsuyu.'],
+          [Speaker.Vendor, 'My grandfather pushed a yatai like this one through Shinjuku. Chronos owns the street now, but not my broth.'],
+          [Speaker.Vendor, "And it's tsuyu, the rainy season. It won't stop until July. Sit down, sit down."],
+          [Speaker.Andrew, '(A ramen yatai by the canal bridge. Some things survive sixty years just fine.)'],
+        );
+      },
     });
     w.npc({
       marker: 'Y',
       look: 'citizen',
-      name: 'Commuter',
-      talk: (w) =>
-        w.say(
-          ['Commuter', 'The Yamanote Line still loops around the city, like it has since 1925. Older than my great-grandparents.'],
-          ['Commuter', 'Everything else in this city belongs to Chronos Corp now.'],
-        ),
+      name: Speaker.Commuter,
+      talk: async (w) => {
+        await pipReaction(
+          w,
+          Flag.FutPipCommuter,
+          [Speaker.Commuter, 'Nice bio-print. Chronos Genetics? I did not know they had a pachycephalosaurus in the catalog yet.'],
+          [Speaker.Andrew, '...Yes. Chronos Genetics. Limited edition.'],
+          [Speaker.Commuter, 'My neighbor has a mini triceratops. It ate his sofa.'],
+        );
+        w.setFlag(Flag.FutHeardYamanote);
+        await w.say(
+          [Speaker.Commuter, 'Hear that? The Yamanote Line. Round and round the city, all night long.'],
+          [Speaker.Commuter, 'It became a full loop in 1925, when they linked Kanda and Ueno. Before that it was just a big C.'],
+          [Speaker.Commuter, 'Older than my great-grandparents, and still on time. Everything else in this city belongs to Chronos Corp now.'],
+        );
+      },
     });
     w.npc({
       marker: 'W',
       look: 'citizen',
-      name: 'Courier',
-      talk: (w) =>
-        w.say(
-          ['Courier', "Chronos drones can't see in the dark alleys, but they've got great microphones."],
-          ['Courier', "Stay out of the puddles if you don't want company."],
-        ),
+      name: Speaker.Courier,
+      talk: async (w) => {
+        await pipReaction(
+          w,
+          Flag.FutPipCourier,
+          [Speaker.Courier, 'Whoa! Is that thing registered? The drones fine you for unlicensed pets. Big fines.'],
+          [Speaker.Andrew, 'He is a... support animal.'],
+          [Speaker.Courier, 'Support animal. Sure. Keep him out of the light, then.'],
+        );
+        await w.say(
+          [Speaker.Courier, "Chronos drones can't see in the dark alleys, but they've got great microphones."],
+          [Speaker.Courier, "Stay out of the puddles if you don't want company."],
+        );
+      },
     });
     w.inspect('7', 'Statue', (w) =>
       w.say(
         'A bronze statue of Hachikō, the Akita dog who waited at Shibuya Station every day for nearly ten years after his owner died.',
-        ['Elias', 'Waiting for someone who never comes back. I think I know somebody like that.'],
+        [Speaker.Andrew, 'Waiting for someone who never comes back. I think I know somebody like that.'],
+        ...(w.flag(Flag.PipAboard) ? ([[Speaker.Pip, '*sniffs the bronze dog, deeply suspicious*']] as const) : []),
       ),
     );
 
     // --- Security ---
-    const towerGate = w.gate({ marker: '3', look: 'laser', openFlag: 'fut:towerOpen' });
-    const labGate = w.gate({ marker: '4', look: 'laser', openFlag: 'fut:labOpen' });
+    const towerGate = w.gate({ marker: '3', look: 'laser', openFlag: Flag.FutTowerOpen });
+    const labGate = w.gate({ marker: '4', look: 'laser', openFlag: Flag.FutLabOpen });
     w.pickup({
       marker: '6',
       item: 'deck',
-      lines: [['Elias', "A battered cyberdeck in an evidence bag, tagged CONFISCATED: Y. TANAKA. This must be Yuki's."]],
+      lines: [[Speaker.Andrew, "A battered cyberdeck in an evidence bag, tagged CONFISCATED: Y. TANAKA. This must be Yuki's."]],
     });
+
+    // The depot's door wants a four-digit code. A forgetful night-shift worker left it, in a way, at the shrine.
+    const depotDoor = w.gate({ marker: '9', look: 'door', openFlag: Flag.FutDepotOpen });
+    w.inspect('9', 'Keypad', async (w) => {
+      if (depotDoor.isOpen) return;
+      w.sfx('beep');
+      const code = await w.enterYear('DEPOT ACCESS CODE', 0);
+      if (code !== DEPOT_CODE) {
+        w.sfx('error');
+        await w.say('ACCESS DENIED.', [Speaker.Andrew, 'Four digits. Someone who works here must have written it down somewhere...']);
+        return;
+      }
+      w.sfx('door');
+      depotDoor.open();
+      w.save();
+      // What Andrew says depends on whether he actually worked the code out.
+      const reaction: Line = w.flag(Flag.FutReadEma)
+        ? [Speaker.Andrew, 'The year the Yamanote became a loop. Thank you, K.']
+        : w.flag(Flag.FutHeardYamanote)
+          ? [Speaker.Andrew, 'Wait, it worked? I just tried the year that commuter kept going on about. Pure luck.']
+          : [Speaker.Andrew, 'Wait... it worked? I typed a random year. That has to be the luckiest guess in the history of time travel.'];
+      await w.say('ACCESS GRANTED.', reaction);
+    });
+    w.inspect('5', 'Ema', (w) => {
+      w.setFlag(Flag.FutReadEma);
+      return w.say(
+        'Wooden ema plaques hang by the shrine, covered in wishes: exams, love, a cat called Mochi.',
+        'One reads: "Kami-sama, please stop me forgetting the depot door code. Note to self: it is the year the Yamanote Line became a loop. — K., night shift"',
+        [Speaker.Andrew, 'Writing your password on a shrine. Some things never change.'],
+      );
+    });
+    w.inspect('8', 'Hologram', (w) =>
+      w.say(
+        'A three-story hologram of a virtual idol with long pink twin tails dances over the avenue: "HOSHI KIRARA ★ LIVE TONIGHT".',
+        [Speaker.Andrew, 'Virtual idols were already filling concert halls in my time. Sixty years later, she is taller than the buildings.'],
+        ...(w.flag(Flag.PipAboard) ? ([[Speaker.Pip, '*chirps along to the music, bobbing his dome*']] as const) : []),
+      ),
+    );
+
+    // Past the lab's laser, a blast door jammed in a power fault. Only a very thick skull will move it.
+    if (!w.flag(Flag.FutBlastDoor)) {
+      const blastDoor = w.obstacle({
+        marker: 'P',
+        look: 'blastdoor',
+        interact: async (w) => {
+          if (!pip) {
+            await w.say([Speaker.Andrew, 'A blast door, jammed halfway in a power fault. It will not budge for me.']);
+            return;
+          }
+          await w.say(
+            [Speaker.Andrew, 'A blast door, jammed in a power fault. The clock is right behind it.'],
+            [Speaker.Andrew, 'Pip, remember that boulder in Hell Creek?'],
+            [Speaker.Pip, '*determined snort*'],
+          );
+          await pip.moveBy(0, 18, 60);
+          await w.wait(0.3);
+          await pip.moveTo('P', 140);
+          w.sfx('clang');
+          w.shake(2.5, 0.5);
+          blastDoor.remove();
+          w.setFlag(Flag.FutBlastDoor);
+          w.save();
+          await pip.moveBy(0, 12, 60);
+          pip.emote('heart', 1.5);
+          await w.say([Speaker.Andrew, 'Sixty-six million years of skull engineering versus Chronos Corp steel. No contest.']);
+        },
+      });
+    }
     w.inspect('T', 'Junction box', (w) => hack(w, towerGate, 'Tower entrance'));
     w.inspect('U', 'Security terminal', (w) => hack(w, labGate, 'Lab door'));
 
@@ -119,46 +242,46 @@ export const FUTURE: EraDef = {
     w.watcher({ kind: 'camera', route: 'B', facing: 'left', group: 'tower', caught: CAMERA_CAUGHT });
     w.watcher({ kind: 'bot', route: 'CD', wait: 1.6, group: 'tower', caught: BOT_CAUGHT });
     w.watcher({ kind: 'bot', route: 'EF', wait: 2.0, group: 'tower', caught: BOT_CAUGHT });
-    w.watcher({ kind: 'drone', route: 'GH', wait: 1.2, group: 'depot', caught: DRONE_CAUGHT });
-    w.watcher({ kind: 'drone', route: 'IJ', wait: 1.4, group: 'depot', caught: DRONE_CAUGHT });
+    w.watcher({ kind: 'drone', route: 'GH', wait: 1.2, group: 'depot', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
+    w.watcher({ kind: 'drone', route: 'IJ', wait: 1.4, group: 'depot', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
     w.watcher({ kind: 'camera', route: 'K', facing: 'left', group: 'depot', caught: CAMERA_CAUGHT });
-    w.watcher({ kind: 'drone', route: 'LQ', wait: 2.0, group: 'street', caught: DRONE_CAUGHT });
+    w.watcher({ kind: 'drone', route: 'LQ', wait: 2.0, group: 'street', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
 
     // --- Parts ---
     w.pickup({
       marker: '1',
       item: 'clock',
       lines: [
-        ['Elias', 'An optical lattice clock: strontium atoms held in a grid of laser light, ticking about 430 trillion times a second.'],
-        ['Elias', "It wouldn't lose a second in the whole age of the universe. Exactly the time reference my year display needs."],
+        [Speaker.Andrew, 'An optical lattice clock: strontium atoms held in a grid of laser light, ticking about 430 trillion times a second.'],
+        [Speaker.Andrew, "It wouldn't lose a second in the whole age of the universe. Exactly the time reference my year display needs."],
       ],
     });
     w.pickup({
       marker: '2',
       item: 'tape',
       lines: [
-        ['Elias', 'A spool of REBCO tape: a rare-earth barium copper oxide superconductor.'],
-        ['Elias', 'Cooled with liquid nitrogen it has zero electrical resistance. The maglev trains float on magnets wound from this.'],
+        [Speaker.Andrew, 'A spool of REBCO tape: a rare-earth barium copper oxide superconductor.'],
+        [Speaker.Andrew, 'Cooled with liquid nitrogen it has zero electrical resistance. The maglev trains float on magnets wound from this.'],
       ],
     });
 
     // --- Hints ---
     w.trigger({
-      area: '5',
-      once: 'fut:towerHint',
+      area: { x: 34, y: 18, w: 5, h: 1 },
+      once: Flag.FutTowerHint,
       run: (w) =>
         w.say(
-          ['Elias', 'The Chronos Corp tower. So they moved the whole operation from Geneva to Tokyo.'],
-          ['Elias', 'Laser barrier at the door, and a patrol bot out front. That junction box in the alley might control the door.'],
+          [Speaker.Andrew, 'The Chronos Corp tower. So they moved the whole operation from Geneva to Tokyo.'],
+          [Speaker.Andrew, 'Laser barrier at the door, and a patrol bot out front. That junction box in the alley might control the door.'],
         ),
     });
     w.trigger({
-      area: '9',
-      once: 'fut:depotHint',
-      run: (w) => w.say(['Elias', 'The maglev depot. Puddles everywhere, and drones with microphones. Splashing will carry even if I sneak.']),
+      area: { x: 11, y: 15, w: 2, h: 1 },
+      once: Flag.FutDepotHint,
+      run: (w) => w.say([Speaker.Andrew, 'The maglev depot. Puddles everywhere, and drones with microphones. Splashing will carry even if I sneak.']),
     });
 
-    for (const marker of ['S', 'P', 'R', 'X', 'Z']) w.checkpoint(marker);
+    for (const marker of ['S', 'R', 'X', 'Z']) w.checkpoint(marker);
     return arrive;
   },
 };
@@ -167,27 +290,28 @@ async function arrive(w: WorldApi, firstVisit: boolean): Promise<void> {
   await w.wait(0.5);
   if (firstVisit) {
     await w.say(
-      ['Elias', 'Rain... and neon. A river canal, crowds of umbrellas, and is that the Tokyo Skytree in the distance?'],
-      ['Elias', "Tokyo. And the biggest tower on the block says CHRONOS CORP. It's... 2087."],
-      ['Elias', 'Sixty-one years after I left. The Institute grew up, and it moved a long way from Geneva.'],
+      [Speaker.Andrew, 'Rain... and neon. A river canal, crowds of umbrellas, and is that the Tokyo Skytree in the distance?'],
+      [Speaker.Andrew, "Tokyo. And the biggest tower on the block says CHRONOS CORP. It's... 2087."],
+      [Speaker.Andrew, 'Sixty-one years after I left. The Institute grew up, and it moved a long way from Geneva.'],
     );
-    w.toast('Check the time machine');
+    if (w.flag(Flag.PipAboard)) await w.say([Speaker.Pip, '*shakes the rain off his dome*'], [Speaker.Andrew, 'Neon, rain and robots, Pip. Stick close.']);
   } else {
-    await w.say(['Elias', 'Neo-Tokyo again. Mind the puddles.']);
+    await w.say([Speaker.Andrew, 'Neo-Tokyo again. Mind the puddles.']);
   }
+  if (!w.flag(progress.diagnosed('future'))) await diagnose(w);
 }
 
 async function hack(w: WorldApi, gate: GateHandle, label: string): Promise<void> {
-  if (!w.flag('fut:canHack')) {
+  if (!w.flag(Flag.FutCanHack)) {
     w.sfx('error');
     await w.say(
-      ['Elias', "Chronos encryption. My multitool doesn't stand a chance against this."],
-      ['Elias', w.flag('fut:metYuki') ? "Yuki's cyberdeck could crack it. It's locked up in the depot." : 'I need someone who knows their systems.'],
+      [Speaker.Andrew, "Chronos encryption. My multitool doesn't stand a chance against this."],
+      [Speaker.Andrew, w.flag(Flag.FutMetYuki) ? "Yuki's cyberdeck could crack it. It's locked up in the depot." : 'I need someone who knows their systems.'],
     );
     return;
   }
   w.sfx('hack');
-  await w.say(['Elias', 'Institute multitool, meet Chronos Corp firmware...']);
+  await w.say([Speaker.Andrew, 'Institute multitool, meet Chronos Corp firmware...']);
   w.disable('tower', 20);
   if (!gate.isOpen) gate.open();
   w.toast(`${label} unlocked · Cameras and bots offline for 20 s`);
@@ -195,71 +319,88 @@ async function hack(w: WorldApi, gate: GateHandle, label: string): Promise<void>
 
 /** Yuki Tanaka: a hacker who leaked Chronos Corp's files, hiding in the alley by the tower. */
 async function talkToYuki(w: WorldApi): Promise<void> {
-  if (!w.flag('fut:metYuki')) {
-    w.setFlag('fut:metYuki');
+  if (!w.flag(Flag.FutMetYuki)) {
+    w.setFlag(Flag.FutMetYuki);
     await w.say(
-      ['Hacker', "...Don't move. Who sent you? Chronos?"],
-      ['Hacker', 'Wait. That face. That lab coat.'],
-      ['Hacker', '"Test Run #47. Dr. Elias Ward, Geneva. Lost sixty-one years ago." I have read your file a hundred times.'],
-      ['Elias', 'You know who I am?'],
-      ['Yuki', "Yuki Tanaka. I leaked Chronos Corp's archives. Your disappearance is the oldest secret they keep."],
-      ['Yuki', "They caught me last month and took my cyberdeck. Without it I can't touch their systems."],
-      ['Yuki', 'It is in an evidence locker in their maglev depot, to the north. Bring it back and I will get you into that tower.'],
+      [Speaker.Hacker, "...Don't move. Who sent you? Chronos?"],
+      [Speaker.Hacker, 'Wait. That face. That lab coat.'],
+      ...(w.flag(Flag.PipAboard) ? ([[Speaker.Hacker, '...And is that a DINOSAUR?'], [Speaker.Andrew, 'Long story.']] as const) : []),
+      [Speaker.Hacker, '"Dr. Andrew Ward. Test Run #47, Geneva." Sixty-one years ago. I have read your file a hundred times.'],
+      [Speaker.Andrew, 'You know who I am?'],
+      [Speaker.Yuki, "Yuki Tanaka. I leaked Chronos Corp's archives. Your file is the strangest thing in them, because most of it is gone."],
+      [Speaker.Yuki, 'The launch log survived: Test Run #47, sixty-one years ago. Everything after the jump was wiped. Telemetry, reports, all of it.'],
+      [Speaker.Andrew, 'Wiped? So nobody knows what happened to me?'],
+      [Speaker.Yuki, 'If Chronos knows, they buried it deep. Lost, recovered, erased... the file does not say. Honestly? You are the first real answer I have found.'],
+      [Speaker.Yuki, "They caught me last month and took my cyberdeck. Without it I can't touch their systems."],
+      [Speaker.Yuki, 'It is in an evidence locker in their maglev depot, to the north. Bring it back and I will get you into that tower.'],
+      [Speaker.Yuki, 'The depot door takes a code. The night shift keeps forgetting theirs; I bet one of them wrote it down somewhere.'],
     );
     return;
   }
-  if (!w.flag('fut:canHack')) {
+  if (!w.flag(Flag.FutCanHack)) {
     if (!w.has('deck')) {
-      await w.say(['Yuki', 'The depot is crawling with drones. Watch out for puddles: their microphones pick up every splash.']);
+      await w.say([Speaker.Yuki, 'The depot is crawling with drones. Watch out for puddles: their microphones pick up every splash.']);
       return;
     }
     w.take('deck');
-    w.setFlag('fut:canHack');
+    w.setFlag(Flag.FutCanHack);
     w.sfx('hack');
     await w.say(
-      ['Yuki', 'My deck! You are crazier than your file says.'],
-      ['Yuki', 'There. I flashed my exploits onto your multitool. Chronos terminals and junction boxes will open for you now.'],
-      ['Yuki', 'And take this. A prototype power cell I lifted from their lab. Something tells me you need it more than I do.'],
+      [Speaker.Yuki, 'My deck! You are crazier than your file says.'],
+      [Speaker.Yuki, 'There. I flashed my exploits onto your multitool. Chronos terminals and junction boxes will open for you now.'],
+      [Speaker.Yuki, 'And take this. A prototype power cell I lifted from their lab. Something tells me you need it more than I do.'],
     );
     w.give('powercell');
     w.sfx('pickup');
     w.toast(`Got: ${ITEMS.powercell.name}`);
     w.save();
     await w.say(
-      ['Yuki', "One more thing from the archives. In 2031 Chronos caught a single signal from Pike's beacon. From Cologne, in 1248."],
-      ['Yuki', 'Four words: "Cache sealed. Needs power."'],
-      ['Elias', 'The crypt with the glowing panel! It was Pike!'],
-      ['Yuki', 'Your year display needs an optical lattice clock: there is one in the tower lab. The depot is full of superconducting tape, too.'],
+      [Speaker.Yuki, 'One more thing from the archives. In 2031 Chronos caught a single signal from an Institute beacon. From Cologne, in 1248.'],
+      [Speaker.Yuki, 'It belongs to Test Run #12, October 2019. Officially an unmanned probe. They scrubbed the pilot\'s name, badly: Dr. Aaron Pike.'],
+    );
+    // Andrew only connects the dots with what he has already found himself.
+    await w.say(
+      w.has('recorder')
+        ? [Speaker.Andrew, 'Pike! The voice on that recorder in the Cretaceous. He is still out there, jumping from window to window.']
+        : [Speaker.Andrew, 'A manned test run, and the Institute told us it was a probe? What else did they hide?'],
+      [Speaker.Yuki, 'The signal was only four words: "Cache sealed. Needs power."'],
+      w.flag(Flag.SawPanel)
+        ? [Speaker.Andrew, 'The sealed crypt in Cologne, with the dead panel! That has to be his cache.']
+        : [Speaker.Andrew, 'A sealed cache somewhere in Cologne, 1248. If I go back, I should look for it.'],
+      [Speaker.Yuki, 'Your year display needs an optical lattice clock: there is one in the tower lab. The depot is full of superconducting tape, too.'],
     );
     return;
   }
-  if (w.flag('fixed:future')) {
-    await w.say(['Yuki', 'Go home, Dr. Ward. And when you get there, tell everyone what Chronos did.']);
+  if (w.flag(progress.fixed('future'))) {
+    await w.say([Speaker.Yuki, 'Go home, Dr. Ward. And when you get there, tell everyone what Chronos did.']);
     return;
   }
-  await w.say(['Yuki', 'Junction box first, then the lab terminal. The cameras restart after twenty seconds, so move fast.']);
+  await w.say([Speaker.Yuki, 'Junction box first, then the lab terminal. The cameras restart after twenty seconds, so move fast.']);
+}
+
+/** The machine's self-test: runs on arrival, so the HUD can list the parts right away. */
+async function diagnose(w: WorldApi): Promise<void> {
+  w.setFlag(progress.diagnosed('future'));
+  w.sfx('error');
+  await w.say(
+    'DIAGNOSTIC REPORT  ·  Year: ▓▓▓▓  ·  Stability: 75%  ·  Damaged: chronometric reference, field coil superconductor.',
+    [Speaker.Andrew, 'No time reference: that is why the year display never worked. I need a clock precise enough to measure a jump.'],
+    [Speaker.Andrew, 'And the field coils need fresh superconductor. In 2087 there must be plenty of both... behind security.'],
+  );
 }
 
 async function useMachine(w: WorldApi): Promise<void> {
-  if (w.flag('fixed:future')) {
+  if (w.flag(progress.fixed('future'))) {
     await timeMachineMenu(w);
     return;
   }
-  if (!w.flag('diag:future')) {
-    w.setFlag('diag:future');
-    w.sfx('error');
-    await w.say(
-      'DIAGNOSTIC REPORT  ·  Year: ▓▓▓▓  ·  Stability: 75%  ·  Damaged: chronometric reference, field coil superconductor.',
-      ['Elias', 'No time reference: that is why the year display never worked. I need a clock precise enough to measure a jump.'],
-      ['Elias', 'And the field coils need fresh superconductor. In 2087 there must be plenty of both... behind security.'],
-    );
-  }
+  if (!w.flag(progress.diagnosed('future'))) await diagnose(w);
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say(['Elias', `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
     return;
   }
-  await w.say(['Elias', 'Clock in, coils rewound... Moment of truth.']);
+  await w.say([Speaker.Andrew, 'Clock in, coils rewound... Moment of truth.']);
   w.machineGlitch(true);
   for (let i = 0; i < 4; i++) {
     w.sfx('hammer');
@@ -268,13 +409,14 @@ async function useMachine(w: WorldApi): Promise<void> {
   w.sfx('success');
   w.flash('#ffffff', 0.5);
   w.machineGlitch(false);
-  w.setFlag('fixed:future');
+  w.setFlag(progress.fixed('future'));
+  for (const part of PARTS) w.take(part);
   w.save();
   await w.say(
-    'STABILITY 90%  ·  YEAR DISPLAY ONLINE: 2087 AD  ·  PASSENGER CAPACITY: 2',
-    ['Elias', 'It shows the year! First time since the accident.'],
-    ['Elias', 'But to lock on to home, it needs a temporal core. Only the Institute could build those... and Pike.'],
+    'STABILITY 85%  ·  YEAR DISPLAY ONLINE: 2087 AD',
+    [Speaker.Andrew, 'It shows the year! First time since the accident.'],
+    [Speaker.Andrew, 'But to lock on to home, it needs a temporal core. Only the Institute could build those... and Pike.'],
   );
-  if (!w.flag('got:notes')) await w.say(['Elias', "Pike's cache in 1248 needs power. Yuki's Power Cell should do it."]);
+  if (!w.flag(progress.got('notes'))) await w.say([Speaker.Andrew, "Pike's cache in 1248 needs power. Yuki's Power Cell should do it."]);
   await timeMachineMenu(w);
 }

@@ -114,6 +114,51 @@ export function buildSleepingRex(): Rig {
   };
 }
 
+/**
+ * A wild boar (Sus scrofa) asleep on its side in a thicket. Boars are mostly
+ * active at dusk and at night, and rest in dense cover during the day.
+ */
+export function buildSleepingBoar(): Rig {
+  const o: PartOptions = { outline: true };
+  const bristle = '#4a3a30';
+  const dark = '#2e241e';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+
+  // Lying down: a wedge-shaped body, high at the shoulders, with a bristly ridge along the back.
+  const torso = ball(0.32, bristle, 0, 0.24, 0, o, 8);
+  torso.scale.set(0.95, 0.75, 1.5);
+  body.add(torso);
+  body.add(box(0.1, 0.1, 0.6, dark, 0, 0.47, 0.05));
+  const head = pivot(0, 0.2, 0.42);
+  head.add(box(0.26, 0.24, 0.3, bristle, 0, 0.02, 0.05, o));
+  head.add(cone(0.12, 0.26, bristle, 0, -0.02, 0.28, o, 6).rotateX(Math.PI / 2));
+  head.add(cylinder(0.06, 0.06, 0.04, '#6a4a40', 0, -0.02, 0.42, {}, 6).rotateX(Math.PI / 2));
+  head.add(cone(0.02, 0.1, '#efe6d0', -0.08, -0.05, 0.3).rotateX(-0.6), cone(0.02, 0.1, '#efe6d0', 0.08, -0.05, 0.3).rotateX(-0.6));
+  head.add(box(0.06, 0.1, 0.04, dark, -0.1, 0.17, -0.04), box(0.06, 0.1, 0.04, dark, 0.1, 0.17, -0.04));
+  head.add(box(0.06, 0.015, 0.02, '#111111', -0.1, 0.07, 0.2), box(0.06, 0.015, 0.02, '#111111', 0.1, 0.07, 0.2));
+  body.add(head);
+  for (const [x, z] of [
+    [-0.14, 0.25],
+    [0.14, 0.25],
+    [-0.14, -0.3],
+    [0.14, -0.3],
+  ]) {
+    body.add(box(0.07, 0.07, 0.2, dark, x, 0.05, z + 0.08, o));
+  }
+  body.add(box(0.03, 0.03, 0.12, dark, 0, 0.3, -0.5));
+
+  return {
+    root,
+    animate(time) {
+      const breath = Math.sin(time * 2.2);
+      torso.scale.y = 0.75 + breath * 0.03;
+      head.rotation.x = breath * 0.03;
+    },
+  };
+}
+
 export interface PipRig extends Rig {
   setLying(lying: boolean): void;
 }

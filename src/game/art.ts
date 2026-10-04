@@ -111,6 +111,22 @@ export const ITEM_SPRITES: Record<ItemId, Sprite> = {
     ['.wwwwww.', '.wkkkkw.', '.wwwwww.', '.wkkkww.', '.wwwwww.', '.wkkkkw.', '.wwwwww.', '........'],
     { w: '#e8e0cc', k: '#5a5a6a' },
   ),
+  navmodule: makeSprite(
+    ['........', '.gggggg.', '.gkkkkg.', '.gkGkkg.', '.gkkkGg.', '.gkGkkg.', '.gggggg.', '..y..y..'],
+    { g: '#9aa6bb', k: '#1a2a3a', G: '#5aff8a', y: '#f1c232' },
+  ),
+  water: makeSprite(
+    ['...kk...', '..kbbk..', '.kwwwwk.', '.kbbbbk.', '.kbBbbk.', '.kbbbbk.', '..kkkk..', '........'],
+    { k: '#7a5a3a', b: '#3a7ab8', B: '#9ad8ff', w: '#c8b890' },
+  ),
+  quartz: makeSprite(
+    ['...ww...', '..wppw..', '..wppw..', '.wppppw.', '.wpPppw.', '.wppppw.', '..wwww..', '.gggggg.'],
+    { w: '#ffffff', p: '#e8e0ff', P: '#c8b8ff', g: '#7a7468' },
+  ),
+  emitter: makeSprite(
+    ['........', '..oooo..', '.oCCCCo.', '.oCwwCo.', '.oCwwCo.', '.oCCCCo.', 'gggggggg', 'gggggggg'],
+    { o: '#c87533', C: '#3a5a8a', w: '#7fd8ff', g: '#9aa6bb' },
+  ),
   core: makeSprite(
     ['...cc...', '..cwwc..', '.cwppwc.', 'cwpPPpwc', 'cwpPPpwc', '.cwppwc.', '..cwwc..', '...cc...'],
     { c: '#3a5a8a', w: '#7fd8ff', p: '#c9a0ff', P: '#ffffff' },

@@ -9,7 +9,7 @@ import { ball, box, cone, cylinder, glow, pivot, type Color, type PartOptions, t
  */
 
 type Helmet = 'nasal' | 'morion';
-type Weapon = 'crossbow' | 'spear' | 'arquebus' | 'lance' | 'cane' | 'kultrun';
+type Weapon = 'longbow' | 'crossbow' | 'spear' | 'arquebus' | 'lance' | 'cane' | 'kultrun';
 
 export interface HumanStyle {
   skin: Color;
@@ -63,8 +63,8 @@ const SKIN = '#f0c08a';
 const SKIN_TAN = '#d9a066';
 const SKIN_BROWN = '#b07a52';
 
-const STYLES: Record<NpcLook | 'elias' | 'soldier', HumanStyle> = {
-  elias: { skin: SKIN, hair: '#4a2f1d', top: '#5a7aa8', pants: '#2f3e5c', shoes: '#202028', coat: '#eef3f6', goggles: true },
+const STYLES: Record<NpcLook | 'andrew' | 'soldier', HumanStyle> = {
+  andrew: { skin: SKIN, hair: '#4a2f1d', top: '#5a7aa8', pants: '#2f3e5c', shoes: '#202028', coat: '#eef3f6', goggles: true },
 
   // Cologne, 1248
   baker: { skin: SKIN, hair: '#d9c7a0', top: '#8a5a3a', pants: '#6a4424', shoes: '#3a2a1a', gown: '#8a5a3a', apron: '#f3efe6', kerchief: '#f3efe6' },
@@ -82,6 +82,8 @@ const STYLES: Record<NpcLook | 'elias' | 'soldier', HumanStyle> = {
     emblem: { color: '#1a1a1a', cross: true },
     weapon: 'crossbow',
   },
+  // The Archbishop's forester: a hooded green tunic, a hunting horn and a longbow.
+  forester: { skin: SKIN_TAN, hair: '#5a3a1e', top: '#4a6a2a', pants: '#5a4a32', shoes: '#3a2a1a', kerchief: '#3e5a24', beard: '#5a3a1e', weapon: 'longbow' },
   // Dominican friars wore a white habit under a black cappa.
   albertus: { skin: '#e8b88a', hair: '#cfcfcf', top: '#f0ece0', pants: '#f0ece0', shoes: '#3a2a1a', gown: '#f0ece0', coat: '#1e1e24', hood: '#1e1e24', tonsure: true },
   thomas: { skin: SKIN, hair: '#3a2a1a', top: '#f0ece0', pants: '#f0ece0', shoes: '#3a2a1a', gown: '#f0ece0', coat: '#1e1e24', hood: '#1e1e24', tonsure: true, build: 1.25 },
@@ -176,7 +178,7 @@ export interface HumanRig extends Rig {
   meshes: THREE.Mesh[];
 }
 
-export function buildHuman(look: NpcLook | 'elias' | 'soldier', overrides: Partial<HumanStyle> = {}): HumanRig {
+export function buildHuman(look: NpcLook | 'andrew' | 'soldier', overrides: Partial<HumanStyle> = {}): HumanRig {
   const s: HumanStyle = { ...STYLES[look], ...overrides };
   const o: PartOptions = { outline: true };
   const wide = s.build ?? 1;
@@ -292,7 +294,14 @@ export function buildHuman(look: NpcLook | 'elias' | 'soldier', overrides: Parti
 
   // Held props. Some poses keep the arms raised.
   let armPose = 0;
-  if (s.weapon === 'crossbow') {
+  if (s.weapon === 'longbow') {
+    // A self bow slung across the back, and a hunting horn at the hip.
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.025, 4, 12, Math.PI * 0.75), toon('#7a5230'));
+    bow.position.set(0, 0.62, -0.2);
+    bow.rotation.set(0, 0, Math.PI * 0.62);
+    body.add(bow);
+    body.add(cone(0.06, 0.24, '#e8dcc0', 0.26, 0.42, 0.08).rotateZ(-1.2));
+  } else if (s.weapon === 'crossbow') {
     armPose = -1.1;
     const bow = new THREE.Group();
     bow.position.set(0, 0.66, 0.3);

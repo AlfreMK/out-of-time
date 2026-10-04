@@ -140,6 +140,13 @@ export class TileMap {
     return found;
   }
 
+  /** Every occurrence of a marker, in reading order (top to bottom, left to right). */
+  markerAll(ch: string): TilePoint[] {
+    const list = this.markers.get(ch);
+    if (!list) throw new Error(`Map marker "${ch}" not found.`);
+    return [...list];
+  }
+
   hasMarker(ch: string): boolean {
     return this.markers.has(ch);
   }

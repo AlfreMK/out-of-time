@@ -1,11 +1,13 @@
 import type { MusicTheme, SfxName } from '../engine/audio.ts';
 import type { EmoteKind, NpcLook } from '../game/looks.ts';
+import type { SpeakerName } from '../game/speakers.ts';
 import type { EraId, ItemId } from '../game/state.ts';
 import type { TileSet } from '../game/tiledefs.ts';
 import type { TileRect } from '../game/tilemap.ts';
+import type { FlagName } from '../game/flags.ts';
 
-/** A line of dialogue: plain strings are narration, tuples have a speaker. */
-export type Line = string | readonly [speaker: string, text: string];
+/** A line of dialogue: plain strings are narration, tuples have a speaker (always from `Speaker`). */
+export type Line = string | readonly [speaker: SpeakerName, text: string];
 
 export type Script = (w: WorldApi) => Promise<void> | void;
 export type Condition = (w: WorldApi) => boolean;
@@ -40,6 +42,10 @@ export interface WatcherSpec {
   group?: string;
   /** Speech bubbles, overriding the defaults for this kind. */
   barks?: Partial<Barks>;
+  /** Starts powered down: blind and deaf to footsteps, it only wakes for a loud noise (glass, an alarm), then goes back to sleep at its post. */
+  dormant?: boolean;
+  /** Draws a guard as another character (e.g. the forester). Doesn't change how it behaves. */
+  look?: NpcLook;
 }
 
 export interface NpcSpec {
@@ -65,7 +71,7 @@ export interface TriggerSpec {
   /** The trigger only fires while this is true. */
   when?: Condition;
   /** Fires only once per save, stored as a flag with this name. */
-  once?: string;
+  once?: FlagName;
   /** Pushes the player back out of the area (an invisible wall with a reason). */
   block?: boolean;
   run: Script;
@@ -84,7 +90,7 @@ export interface GateSpec {
   marker: string;
   look: 'laser' | 'door' | 'palisade';
   /** Starts open when this flag is set. */
-  openFlag?: string;
+  openFlag?: FlagName;
 }
 
 export interface GateHandle {
@@ -102,7 +108,7 @@ export interface AllySpec {
 }
 
 /** Set dressing that doesn't fit the tile grid. */
-export type DecorKind = 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium';
+export type DecorKind = 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol';
 
 export interface MusicZone {
   area: string | TileRect;
@@ -112,7 +118,11 @@ export interface MusicZone {
 
 export interface SleeperSpec {
   marker: string;
+  /** What is asleep: the T. rex (two tiles wide) or a wild boar (one tile). Defaults to the T. rex. */
+  look?: 'rex' | 'boar';
   caught: Line[];
+  /** Played when it wakes up. Defaults to a roar. */
+  sound?: SfxName;
 }
 
 export interface CompanionSpec {
@@ -123,9 +133,11 @@ export interface CompanionSpec {
   talk: Script;
 }
 
+export type ObstacleLook = 'boulder' | 'column' | 'log' | 'blastdoor' | 'chest';
+
 export interface ObstacleSpec {
   marker: string;
-  look: 'boulder' | 'column';
+  look: ObstacleLook;
   interact: Script;
   label?: string;
 }
@@ -156,8 +168,8 @@ export interface WorldApi {
   has(item: ItemId): boolean;
   give(item: ItemId): void;
   take(item: ItemId): void;
-  flag(name: string): boolean;
-  setFlag(name: string, on?: boolean): void;
+  flag(name: FlagName): boolean;
+  setFlag(name: FlagName, on?: boolean): void;
   save(): void;
 
   // Presentation
@@ -185,12 +197,18 @@ export interface WorldApi {
   obstacle(spec: ObstacleSpec): ActorHandle;
   machine(marker: string, interact: Script): void;
   inspect(marker: string, label: string, interact: Script): void;
+  /** One inspect spot at every occurrence of a marker; `interact` gets the spot's index in reading order. */
+  inspectEach(marker: string, label: string, interact: (w: WorldApi, index: number) => Promise<void> | void): void;
   checkpoint(marker: string): void;
   gate(spec: GateSpec): GateHandle;
   decor(marker: string, kind: DecorKind): void;
+  /** Set dressing at every occurrence of a marker, in reading order; `null` leaves a spot empty. */
+  decorEach(marker: string, kinds: Array<DecorKind | null>): Array<ActorHandle | null>;
   ally(spec: AllySpec): ActorHandle;
 
   // Systems
+  /** A loud noise where the player stands (an alarm, a crash): watchers in earshot come to look. */
+  alarm(radius: number): void;
   /** Switches off every watcher in a group for a while (cameras, robots). */
   disable(group: string, seconds: number): void;
   /** Asks the player for a four-digit year. */

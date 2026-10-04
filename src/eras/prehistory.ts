@@ -5,6 +5,8 @@ import { ERA_INFO } from './info.ts';
 import { PREHISTORY_MAP, PREHISTORY_MARKER_BASE } from './prehistory-map.ts';
 import { timeMachineMenu } from './shared.ts';
 import type { CompanionHandle, EraDef, Line, WorldApi } from './types.ts';
+import { Speaker } from '../game/speakers.ts';
+import { Flag, progress } from '../game/flags.ts';
 
 const PARTS: ItemId[] = ['amber', 'obsidian', 'meteorite'];
 
@@ -36,25 +38,25 @@ export const PREHISTORY: EraDef = {
   parts: PARTS,
 
   objective(w) {
-    if (!w.flag('diag:prehistory')) return 'Check the damaged time machine.';
-    if (!w.flag('fixed:prehistory')) {
+    if (!w.flag(progress.diagnosed('prehistory'))) return 'Check the damaged time machine.';
+    if (!w.flag(progress.fixed('prehistory'))) {
       const missing = PARTS.filter((p) => !w.has(p)).map((p) => ITEMS[p].name);
       if (missing.length === 0) return 'Bring the parts back to the time machine.';
-      if (!w.flag('pipFriend') && !w.has('meteorite')) {
+      if (!w.flag(Flag.PipFriend) && !w.has('meteorite')) {
         return `Find: ${missing.join(', ')}. Something was whimpering in the valley past the east corridor.`;
       }
       return `Find: ${missing.join(', ')}.`;
     }
-    if (w.has('shield') && !w.flag('got:recorder')) return 'Use the shield to climb the rocky pass north of the forest.';
-    if (w.flag('fixed:future') && !w.flag('fixed:ruins') && w.flag('got:notes')) return 'Bring Pip along to 2240: his head could move that fallen column.';
+    if (w.flag(progress.fixed('medieval')) && !w.flag(progress.got('recorder'))) return 'Climb the rocky pass north of the forest, with the shield over your head. Something metallic glints at the top.';
+    if (w.has('navmodule')) return "Install Pike's nav module in the time machine, and take Pip along.";
     return 'Use the time machine to travel.';
   },
 
   setup(w) {
     const pip = w.companion({
       marker: 'P',
-      name: 'Pip',
-      following: w.flag('pipFriend'),
+      name: Speaker.Pip,
+      following: w.flag(Flag.PipFriend),
       talk: (w) => healPip(w, pip),
     });
 
@@ -65,46 +67,55 @@ export const PREHISTORY: EraDef = {
       marker: '1',
       item: 'amber',
       lines: [
-        ['Elias', "Hardened tree resin. In a few million years it'll become amber. Today it's simply a great electrical insulator."],
+        [Speaker.Andrew, "Hardened tree resin. In a few million years it'll become amber. Today it's simply a great electrical insulator."],
       ],
     });
     w.pickup({
       marker: '2',
       item: 'obsidian',
-      lines: [['Elias', 'Obsidian: volcanic glass. With some patience I can grind it into a rough lens.'], ['Elias', 'Now let me tiptoe out of here...']],
+      lines: [[Speaker.Andrew, 'Obsidian: volcanic glass. With some patience I can grind it into a rough lens.'], [Speaker.Andrew, 'Now let me tiptoe out of here...']],
     });
     w.pickup({
       marker: '3',
       item: 'meteorite',
       lines: [
-        ['Elias', "Meteoric iron! Mostly iron and nickel, the alloy that falls from space. That's my conductor."],
-        ['Elias', "Funny. In about half a million years, a much bigger rock lands in what'll be Mexico. Chicxulub. End of the dinosaurs."],
-        ['Elias', 'Thanks, Pip. I could never have moved that boulder alone.'],
+        [Speaker.Andrew, "Meteoric iron! Mostly iron and nickel, the alloy that falls from space. That's my conductor."],
+        [Speaker.Andrew, "Funny. In about half a million years, a much bigger rock lands in what'll be Mexico. Chicxulub. End of the dinosaurs."],
+        [Speaker.Andrew, 'Thanks, Pip. I could never have moved that boulder alone.'],
       ],
     });
     w.pickup({
       marker: '4',
       item: 'fern',
       lines: [
-        ['Elias', 'These ferns have a sharp, resinous smell. Several living ferns produce antimicrobial compounds.'],
-        ['Elias', "It's not a hospital, but it beats an open wound in a swamp."],
+        [Speaker.Andrew, 'These ferns have a sharp, resinous smell. Several living ferns produce antimicrobial compounds.'],
+        [Speaker.Andrew, "It's not a hospital, but it beats an open wound in a swamp."],
       ],
     });
     w.pickup({
       marker: '5',
       item: 'recorder',
       lines: [
-        ['Elias', "A field recorder? Up here? That's Institute equipment!"],
+        [Speaker.Andrew, "A field recorder? Up here? That's Institute equipment!"],
         'You press play. A tired voice crackles through the static.',
-        ['Pike', 'Dr. Aaron Pike, Test Run #12, October 2019. Day... I stopped counting.'],
-        ['Pike', 'The Institute told the board this run was unmanned. It was not. They knew the core was unstable.'],
-        ['Pike', "If someone from the Institute finds this: I'm not dead. I'm jumping forward, one window at a time."],
-        ['Pike', "And if you're stranded like me... don't trust the return coordinates."],
-        ['Elias', 'Test Run #12... they told us that was an unmanned probe.'],
-        ['Elias', "What else hasn't the Institute told us?"],
+        [Speaker.Pike, 'Dr. Aaron Pike, Test Run #12, October 2019. Day... I stopped counting.'],
+        [Speaker.Pike, 'The Institute told the board this run was unmanned. It was not. They knew the core was unstable.'],
+        [Speaker.Pike, "If someone from the Institute finds this: I'm not dead. I'm jumping forward, one window at a time."],
+        [Speaker.Pike, "And if you're stranded like me... don't trust the return coordinates."],
+        [Speaker.Andrew, 'Test Run #12... they told us that was an unmanned probe.'],
+        [Speaker.Andrew, "What else hasn't the Institute told us?"],
       ],
-      after: (w) => {
-        if (w.flag('sawPanel')) return w.say(['Elias', 'That glowing panel in the crypt back in 1248... was that you, Pike?']);
+      after: async (w) => {
+        if (w.flag(Flag.SawPanel)) await w.say([Speaker.Andrew, 'That glowing panel in the crypt back in 1248... was that you, Pike?']);
+        w.give('navmodule');
+        w.sfx('pickup');
+        w.toast(`Got: ${ITEMS.navmodule.name}`);
+        w.save();
+        await w.say(
+          'Wedged under the recorder: an Institute navigation module, scratched but intact.',
+          [Speaker.Andrew, 'Pike\'s nav module. It logs the coordinates of every window he jumped through.'],
+          [Speaker.Andrew, 'If I plug it into my machine, I can follow his trail.'],
+        );
       },
     });
 
@@ -124,7 +135,7 @@ export const PREHISTORY: EraDef = {
     });
     w.hazard({ area: 'H', kind: 'rocks' });
 
-    if (!w.flag('boulderBroken')) {
+    if (!w.flag(Flag.BoulderBroken)) {
       const boulder = w.obstacle({
         marker: 'K',
         look: 'boulder',
@@ -132,14 +143,14 @@ export const PREHISTORY: EraDef = {
         interact: async (w) => {
           if (!pip.following) {
             await w.say(
-              ['Elias', 'A huge boulder blocks the way into the crater.'],
-              ['Elias', "Something metallic glints behind it. I'd never move this thing on my own, though."],
+              [Speaker.Andrew, 'A huge boulder blocks the way into the crater.'],
+              [Speaker.Andrew, "Something metallic glints behind it. I'd never move this thing on my own, though."],
             );
             return;
           }
           await w.say(
-            ['Elias', "Pip, paleontologists still argue about whether pachycephalosaurs head-butted things. Want to settle it?"],
-            ['Pip', '*determined snort*'],
+            [Speaker.Andrew, "Pip, paleontologists still argue about whether pachycephalosaurs head-butted things. Want to settle it?"],
+            [Speaker.Pip, '*determined snort*'],
           );
           await pip.moveBy(0, 18, 60);
           await w.wait(0.3);
@@ -147,11 +158,11 @@ export const PREHISTORY: EraDef = {
           w.sfx('boom');
           w.shake(3, 0.6);
           boulder.remove();
-          w.setFlag('boulderBroken');
+          w.setFlag(Flag.BoulderBroken);
           w.save();
           await pip.moveBy(0, 12, 60);
           pip.emote('heart', 1.5);
-          await w.say(['Elias', "Well. That's one data point for the head-butting theory."]);
+          await w.say([Speaker.Andrew, "Well. That's one data point for the head-butting theory."]);
         },
       });
     }
@@ -163,54 +174,54 @@ export const PREHISTORY: EraDef = {
       when: (w) => !w.has('shield'),
       run: (w) =>
         w.say(
-          ['Elias', 'Rocks keep tumbling down this slope. One of those would flatten me.'],
-          ['Elias', 'I need something to protect my head before I try climbing up there.'],
+          [Speaker.Andrew, 'Rocks keep tumbling down this slope. One of those would flatten me.'],
+          [Speaker.Andrew, 'I need something to protect my head before I try climbing up there.'],
         ),
     });
     w.trigger({
       area: 'J',
-      once: 'pre:passShield',
+      once: Flag.PrePassShield,
       when: (w) => w.has('shield'),
-      run: (w) => w.say(['Elias', 'Shield up. Let the mountain do its worst.']),
+      run: (w) => w.say([Speaker.Andrew, 'Shield up. Let the mountain do its worst.']),
     });
     w.trigger({
       area: 'U',
-      once: 'pre:meadowHint',
+      once: Flag.PreMeadowHint,
       run: (w) =>
         w.say(
-          ['Elias', 'Is that... a Dakotaraptor? Five meters of feathers and claws. Okay. Stay calm.'],
-          ['Elias', "No grass anywhere: grasslands won't exist for millions of years. But those fern thickets should hide me."],
+          [Speaker.Andrew, 'Is that... a Dakotaraptor? Five meters of feathers and claws. Okay. Stay calm.'],
+          [Speaker.Andrew, "No grass anywhere: grasslands won't exist for millions of years. But those fern thickets should hide me."],
           'Ferns and bushes hide you. Stay out of the vision cones, and hold {sneak} to sneak quietly.',
         ),
     });
     w.trigger({
       area: 'Q',
-      once: 'pre:caveHint',
+      once: Flag.PreCaveHint,
       run: (w) =>
         w.say(
-          ['Elias', "It's pitch black in there... and something huge is breathing."],
-          ['Elias', 'Studies suggest T. rex heard low-pitched sounds very well. Cracking bones would carry far.'],
+          [Speaker.Andrew, "It's pitch black in there... and something huge is breathing."],
+          [Speaker.Andrew, 'Studies suggest T. rex heard low-pitched sounds very well. Cracking bones would carry far.'],
           'Walking makes noise. Hold {sneak} to sneak in silence, but bones crack no matter what.',
         ),
     });
     w.trigger({
       area: 'N',
-      once: 'pre:forestHint',
-      run: (w) => w.say(['Elias', 'More raptors in the forest. Dromaeosaurs probably hunted with keen eyes and ears. Patience, Elias.']),
+      once: Flag.PreForestHint,
+      run: (w) => w.say([Speaker.Andrew, 'More raptors in the forest. Dromaeosaurs probably hunted with keen eyes and ears. Patience, Andrew.']),
     });
     w.trigger({
       area: 'L',
-      once: 'pre:valleyHint',
-      when: (w) => !w.flag('pipFriend'),
-      run: (w) => w.say(['Elias', 'A quiet valley, away from the raptors. And... something is whimpering up by the crater.']),
+      once: Flag.PreValleyHint,
+      when: (w) => !w.flag(Flag.PipFriend),
+      run: (w) => w.say([Speaker.Andrew, 'A quiet valley, away from the raptors. And... something is whimpering up by the crater.']),
     });
     w.trigger({
       area: 'T',
-      once: 'pre:gorgeHint',
+      once: Flag.PreGorgeHint,
       run: (w) =>
         w.say(
-          ['Elias', 'A narrow gorge, and a raptor pacing right across it. The only way west.'],
-          ['Elias', "I'll wait until it turns its back, then slip past."],
+          [Speaker.Andrew, 'A narrow gorge, and a raptor pacing right across it. The only way west.'],
+          [Speaker.Andrew, "I'll wait until it turns its back, then slip past."],
         ),
     });
 
@@ -223,91 +234,96 @@ export const PREHISTORY: EraDef = {
 async function arrive(w: WorldApi, firstVisit: boolean, pip: CompanionHandle): Promise<void> {
   if (firstVisit) {
     await w.wait(0.6);
-    await w.say(
-      ['Elias', "First things first: let's see how bad the damage is."],
-      'Move with WASD, the arrow keys or the left stick. Press {interact} to interact.',
-    );
-    w.toast('Check the time machine');
+    await w.say([Speaker.Andrew, "First things first: let's see how bad the damage is."]);
+    await diagnose(w);
+    await w.say('Move with WASD, the arrow keys or the left stick. Press {interact} to interact.');
     return;
   }
+  if (!w.flag(progress.diagnosed('prehistory'))) await diagnose(w);
   await w.wait(0.4);
   if (pip.following) {
     pip.emote('heart', 2);
     w.sfx('chirp');
-    await w.say(['Pip', '*excited chirp*'], ['Elias', 'Pip! Did you miss me, buddy?']);
+    await w.say([Speaker.Pip, '*excited chirp*'], [Speaker.Andrew, 'Pip! Did you miss me, buddy?']);
   }
-  if (w.has('shield') && !w.flag('got:recorder')) {
-    await w.say(['Elias', 'With this shield, I might finally make it up that rocky slope north of the forest.']);
+  if (w.flag(progress.fixed('medieval')) && !w.flag(progress.got('recorder'))) {
+    await w.say(
+      [Speaker.Andrew, 'The machine can carry two now. You are coming with me this time, Pip.'],
+      [Speaker.Andrew, 'But first, that rocky slope north of the forest. With the shield over my head, I can finally climb it.'],
+    );
   }
 }
 
 async function healPip(w: WorldApi, pip: CompanionHandle): Promise<void> {
   if (!w.has('fern')) {
-    if (!w.flag('pipMet')) {
-      w.setFlag('pipMet');
+    if (!w.flag(Flag.PipMet)) {
+      w.setFlag(Flag.PipMet);
       await w.say(
-        ['Elias', 'A young Pachycephalosaurus! See the bony dome on its head? It keeps thickening as they grow up.'],
-        ['Elias', 'Some paleontologists think "Dracorex" and "Stygimoloch" were just juveniles like this one.'],
-        ['Pip', '*weak whimper*'],
-        ['Elias', "Its leg is cut pretty badly. Easy, little one. I'm not going to hurt you."],
-        ['Elias', 'That wound needs cleaning. Maybe a medicinal plant...'],
-        ['Elias', 'I saw some sharp-smelling ferns in the meadow south of the machine.'],
+        [Speaker.Andrew, 'A young Pachycephalosaurus! See the bony dome on its head? It keeps thickening as they grow up.'],
+        [Speaker.Andrew, 'Some paleontologists think "Dracorex" and "Stygimoloch" were just juveniles like this one.'],
+        [Speaker.Pip, '*weak whimper*'],
+        [Speaker.Andrew, "Its leg is cut pretty badly. Easy, little one. I'm not going to hurt you."],
+        [Speaker.Andrew, 'That wound needs cleaning. Maybe a medicinal plant...'],
+        [Speaker.Andrew, 'I saw some sharp-smelling ferns in the meadow south of the machine.'],
       );
     } else {
-      await w.say(['Pip', '*whimper*'], ['Elias', "Hang in there. I'll find that fern."]);
+      await w.say([Speaker.Pip, '*whimper*'], [Speaker.Andrew, "Hang in there. I'll find that fern."]);
     }
     return;
   }
 
   w.take('fern');
-  await w.say(['Elias', 'Here, this fern should keep the wound clean. Hold still...']);
+  await w.say([Speaker.Andrew, 'Here, this fern should keep the wound clean. Hold still...']);
   w.sfx('heal');
   await w.wait(0.8);
   pip.follow();
   pip.emote('heart', 2);
-  w.setFlag('pipFriend');
+  w.setFlag(Flag.PipFriend);
   w.save();
   w.toast('Pip joined you!');
   await w.say(
-    ['Pip', '*happy chirp*'],
-    ['Elias', 'There you go! You need a name... How about Pip?'],
+    [Speaker.Pip, '*happy chirp*'],
+    [Speaker.Andrew, 'There you go! You need a name... How about Pip?'],
     'Pip seems determined to follow you everywhere.',
   );
 }
 
+/** The machine's self-test: runs on arrival, so the HUD can list the parts right away. */
+async function diagnose(w: WorldApi): Promise<void> {
+  w.setFlag(progress.diagnosed('prehistory'));
+  w.sfx('error');
+  await w.say(
+    'DIAGNOSTIC REPORT  ·  Year: unknown  ·  Stability: 12%  ·  Damaged: power conductor, focusing lens, core insulation.',
+    [Speaker.Andrew, 'A conductor, a lens and an insulator. In a world without a hardware store.'],
+    [Speaker.Andrew, 'Think, Andrew. Hardened tree resin is a decent natural insulator...'],
+    [Speaker.Andrew, 'Obsidian is volcanic glass. I could grind it into a rough lens...'],
+    [Speaker.Andrew, 'And a conductor means metal. Pure iron, out here? Only if it fell from the sky. A meteorite.'],
+  );
+}
+
 async function useMachine(w: WorldApi, pip: CompanionHandle): Promise<void> {
-  if (w.flag('fixed:prehistory')) {
+  if (w.flag(progress.fixed('prehistory'))) {
     await timeMachineMenu(w, {
-      beforeJump: async (to) => {
-        // Only at the very end can the machine safely carry two.
-        if (to !== 'ruins' || !pip.following || !w.flag('fixed:future')) return;
-        const pick = await w.choose('Take Pip along?', ['Yes, come on Pip!', 'No, stay here']);
-        w.setFlag('pipAboard', pick === 0);
-        if (pick === 0) await w.say(['Elias', "Just this once, buddy. I'll bring you right back home. Promise."], ['Pip', '*excited chirp*']);
+      beforeJump: async () => {
+        // Since the Cologne repair the machine can carry two, and Pip won't be left behind again.
+        if (!w.flag(progress.fixed('medieval')) || w.flag(Flag.PipAboard)) return;
+        if (!pip.following) pip.follow();
+        w.setFlag(Flag.PipAboard);
+        await w.say([Speaker.Andrew, "Come on, Pip. I'll bring you back home at the end. Promise."], [Speaker.Pip, '*excited chirp*']);
       },
     });
     return;
   }
 
-  if (!w.flag('diag:prehistory')) {
-    w.setFlag('diag:prehistory');
-    w.sfx('error');
-    await w.say(
-      'DIAGNOSTIC REPORT  ·  Year: unknown  ·  Stability: 12%  ·  Damaged: power conductor, focusing lens, core insulation.',
-      ['Elias', 'A conductor, a lens and an insulator. In a world without a hardware store.'],
-      ['Elias', 'Think, Elias. Hardened tree resin is a decent natural insulator...'],
-      ['Elias', 'Obsidian is volcanic glass. I could grind it into a rough lens...'],
-      ['Elias', 'And a conductor means metal. Pure iron, out here? Only if it fell from the sky. A meteorite.'],
-    );
-  }
+  if (!w.flag(progress.diagnosed('prehistory'))) await diagnose(w);
 
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say(['Elias', `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
     return;
   }
 
-  await w.say(['Elias', "That's everything. Let's put this thing back together."]);
+  await w.say([Speaker.Andrew, "That's everything. Let's put this thing back together."]);
   w.machineGlitch(true);
   for (let i = 0; i < 4; i++) {
     w.sfx('hammer');
@@ -316,21 +332,22 @@ async function useMachine(w: WorldApi, pip: CompanionHandle): Promise<void> {
   w.sfx('success');
   w.flash('#ffffff', 0.5);
   w.machineGlitch(false);
-  w.setFlag('fixed:prehistory');
+  w.setFlag(progress.fixed('prehistory'));
+  for (const part of PARTS) w.take(part);
   w.save();
   await w.say(
     'STABILITY 31%  ·  Return to origin: FAILED  ·  Nearest stable window: ▓▓▓▓ AD.',
-    ['Elias', "The year display is still broken. Wherever that is, it's a lot closer to home than this."],
+    [Speaker.Andrew, "The year display is still broken. Wherever that is, it's a lot closer to home than this."],
   );
   if (pip.following) {
     await w.say(
-      ['Pip', '*worried chirp*'],
-      ['Elias', "I have to go, buddy. The machine can't carry both of us. Not yet."],
-      ['Elias', "I'll come back. I promise."],
+      [Speaker.Pip, '*worried chirp*'],
+      [Speaker.Andrew, "I have to go, buddy. The machine can't carry both of us. Not yet."],
+      [Speaker.Andrew, "I'll come back. I promise."],
     );
     pip.emote('heart', 2);
   }
-  await w.say(['Elias', 'Here goes nothing...']);
+  await w.say([Speaker.Andrew, 'Here goes nothing...']);
   w.machineGlitch(true);
   w.sfx('warp');
   w.shake(2, 1.4);

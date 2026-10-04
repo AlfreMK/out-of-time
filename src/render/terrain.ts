@@ -27,7 +27,8 @@ type Shape =
   | 'prism'
   | 'flatcone'
   | 'stake'
-  | 'neon';
+  | 'neon'
+  | 'glass';
 
 const GEOMETRIES: Record<Shape, () => THREE.BufferGeometry> = {
   floor: () => new THREE.BoxGeometry(1, 0.2, 1).translate(0, -0.1, 0),
@@ -48,10 +49,14 @@ const GEOMETRIES: Record<Shape, () => THREE.BufferGeometry> = {
   flatcone: () => new THREE.ConeGeometry(0.8, 0.35, 8),
   stake: () => new THREE.CylinderGeometry(0.1, 0.11, 1, 6).translate(0, 0.5, 0),
   neon: () => new THREE.BoxGeometry(1, 1, 1),
+  glass: () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
 };
 
+/** Deck height of Neo-Tokyo's railway viaduct: low enough not to hide the row in front of it. */
+const VIADUCT_H = 0.7;
+
 /** Shapes that don't cast shadows (flat ground, tiny details). */
-const NO_SHADOW = new Set<Shape>(['floor', 'water', 'petal', 'pebble', 'bone', 'neon']);
+const NO_SHADOW = new Set<Shape>(['floor', 'water', 'petal', 'pebble', 'bone', 'neon', 'glass']);
 
 interface Instance {
   matrix: THREE.Matrix4;
@@ -77,7 +82,14 @@ class Batch {
 
   build(group: THREE.Group, water: THREE.Material): void {
     for (const [shape, list] of this.instances) {
-      const material = shape === 'water' ? water : shape === 'neon' ? new THREE.MeshBasicMaterial({ color: '#ffffff' }) : toon('#ffffff');
+      const material =
+        shape === 'water'
+          ? water
+          : shape === 'neon'
+            ? new THREE.MeshBasicMaterial({ color: '#ffffff' })
+            : shape === 'glass'
+              ? new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.16, depthWrite: false })
+              : toon('#ffffff');
       const mesh = new THREE.InstancedMesh(GEOMETRIES[shape](), material, list.length);
       list.forEach((instance, i) => {
         mesh.setMatrixAt(i, instance.matrix);
@@ -101,20 +113,64 @@ function vary(color: string, tx: number, ty: number, amount = 0.03): THREE.Color
 
 export interface Terrain {
   group: THREE.Group;
-  update(time: number): void;
+  /** Lowers the walls that stand between the camera and the interior whose floor is `inside` (null: none). */
+  update(time: number, inside: TileLook | null): void;
 }
+
+/** Floors of building interiors (Neo-Tokyo's depot and tower). */
+export const INTERIOR_LOOKS: ReadonlySet<TileLook> = new Set<TileLook>(['lobby', 'labfloor', 'server', 'techcrate', 'doorway', 'marble', 'crypt']);
+
+/** Tiles that make up the road surface, for lane markings and curbs. */
+const ROAD_LOOKS: ReadonlySet<TileLook> = new Set<TileLook>(['asphalt', 'puddle']);
 
 export function buildTerrain(map: TileMap): Terrain {
   const group = new THREE.Group();
   const batch = new Batch();
   const waterMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', transparent: true, opacity: 0.82 });
   const glows: Array<{ material: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
+  const spinners: THREE.Object3D[] = [];
+  // The viaduct's extent, so one Yamanote train can run along it.
+  let viaduct: { x0: number; x1: number; z: number } | null = null;
+  // Walls just south of an interior go in a group per interior floor, which sinks only while the
+  // player stands on that floor (the lab wall stays up while you walk the gallery outside it).
+  const cuts = new Map<TileLook, { batch: Batch; group: THREE.Group }>();
+  const cutBatchFor = (floorLook: TileLook): Batch => {
+    let cut = cuts.get(floorLook);
+    if (!cut) {
+      cut = { batch: new Batch(), group: new THREE.Group() };
+      cuts.set(floorLook, cut);
+    }
+    return cut.batch;
+  };
 
   const lookAt = (tx: number, ty: number): TileLook | null => (map.inBounds(tx, ty) ? map.def(tx, ty).look : null);
   const floor = (tx: number, ty: number, color: string, amount = 0.025, y = 0): void =>
     batch.add('floor', tx + 0.5, y, ty + 0.5, vary(color, tx, ty, amount));
   const r = (tx: number, ty: number, salt: number): number => hash2(tx, ty, salt);
   const abandoned = map.tileset['.']?.look === 'dust';
+  /** The interior floor one or two tiles north of a wall, if any: that's the room the wall hides. */
+  const interiorNorth = (tx: number, ty: number): TileLook | null => {
+    for (let k = 1; k <= 2; k++) {
+      const n = lookAt(tx, ty - k);
+      if (n !== null && INTERIOR_LOOKS.has(n)) return n;
+    }
+    return null;
+  };
+  const isRoad = (tx: number, ty: number): boolean => {
+    const n = lookAt(tx, ty);
+    return n !== null && ROAD_LOOKS.has(n);
+  };
+  /** Crossings line up with the canal bridges and building doors. */
+  const crossing = (tx: number): boolean => {
+    for (let y = 0; y < map.height; y++) {
+      const n = lookAt(tx, y);
+      if (n === 'steelbridge') return true;
+    }
+    return false;
+  };
+  const NEON = ['#ff3fd0', '#3fe0ff', '#ffd23f', '#7a5aff'];
+  /** Wet asphalt mirrors the signs as long, dim smears. */
+  const REFLECTION = ['#3a1f48', '#1c3446', '#3a3420', '#2a2050'];
 
   for (let ty = 0; ty < map.height; ty++) {
     for (let tx = 0; tx < map.width; tx++) {
@@ -249,9 +305,14 @@ export function buildTerrain(map: TileMap): Terrain {
         }
         case 'housewall':
         case 'housedoor':
-        case 'panel':
-          batch.add('block', cx, 0, cz, '#e0c08f', [1, 1.35, 1]);
-          batch.add('block', cx, 1.25, cz + 0.45, '#5a3a1e', [1, 0.1, 0.12]);
+        case 'panel': {
+          // The chapel's front wall sinks while Andrew is inside Pike's crypt.
+          const cut = interiorNorth(tx, ty);
+          if (cut) batch.add('block', cx, 0, cz, '#d0b080', [0.98, 0.35, 0.98]);
+          const wall = cut ? cutBatchFor(cut) : batch;
+          wall.add('block', cx, 0, cz, '#e0c08f', [1, 1.35, 1]);
+          // The timber trim sits proud of the wall face, so it never shares a plane with the wall.
+          wall.add('block', cx, 1.16, cz + 0.535, '#5a3a1e', [1, 0.1, 0.06]);
           if (look === 'housedoor') batch.add('block', cx, 0, cz + 0.5, '#6a4424', [0.55, 0.95, 0.06]);
           else if (look === 'panel') {
             batch.add('block', cx, 0, cz + 0.5, '#5a5e65', [0.7, 1.05, 0.08]);
@@ -266,6 +327,12 @@ export function buildTerrain(map: TileMap): Terrain {
           } else if (r(tx, ty, 7) < 0.5) {
             batch.add('block', cx, 0.5, cz + 0.5, '#3a4a6a', [0.4, 0.4, 0.05]);
           }
+          break;
+        }
+        case 'crypt':
+          // Old flagstones under the dust of decades.
+          floor(tx, ty, (tx + ty) % 2 ? '#5a554e' : '#4e4a44', 0.03);
+          if (r(tx, ty, 1) < 0.5) batch.add('pebble', tx + 0.2 + r(tx, ty, 2) * 0.6, 0.03, ty + 0.2 + r(tx, ty, 3) * 0.6, '#6a655c', [0.8, 0.4, 0.8]);
           break;
         case 'bridge':
           floor(tx, ty, '#6a5a3a', 0.04, -0.45);
@@ -353,6 +420,82 @@ export function buildTerrain(map: TileMap): Terrain {
         case 'stairs': {
           const h = map.def(tx, ty).height ?? 0.6;
           for (let i = 0; i < 3; i++) batch.add('block', tx + 0.17 + i * 0.33, 0, cz, i % 2 ? '#8a9098' : '#9aa0a8', [0.34, (h * (i + 1)) / 3, 1]);
+          break;
+        }
+        case 'fence': {
+          // Wattle: hazel rods woven between stakes, joined to neighboring fences and walls.
+          floor(tx, ty, '#78b450');
+          batch.add('stake', cx, 0, cz, '#5a3a1e', [0.5, 0.85, 0.5]);
+          const joins = (n: TileLook | null): boolean => n === 'fence' || n === 'housewall' || n === 'housedoor';
+          const arms: Array<[number, number]> = [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ];
+          for (const [dx, dz] of arms) {
+            if (!joins(lookAt(tx + dx, ty + dz))) continue;
+            for (let i = 0; i < 3; i++) {
+              const size: [number, number, number] = dx ? [0.5, 0.11, 0.07] : [0.07, 0.11, 0.5];
+              batch.add('block', cx + dx * 0.25, 0.14 + i * 0.2, cz + dz * 0.25, i % 2 ? '#8a6438' : '#a07a48', size);
+            }
+          }
+          break;
+        }
+        case 'brushwood':
+          // Dead leaves and dry twigs: they crack loudly underfoot, even when sneaking.
+          floor(tx, ty, '#7a8a46');
+          for (let i = 0; i < 5; i++) {
+            batch.add('bone', tx + 0.2 + r(tx, ty, i) * 0.6, 0.04, ty + 0.2 + r(tx, ty, i + 5) * 0.6, i % 2 ? '#6a4a2a' : '#8a6a42', [0.8, 1.3, 0.8], [Math.PI / 2, r(tx, ty, i + 10) * 6, 0]);
+          }
+          for (let i = 0; i < 6; i++) {
+            batch.add('petal', tx + 0.1 + r(tx, ty, i + 20) * 0.8, 0.03, ty + 0.1 + r(tx, ty, i + 30) * 0.8, ['#b07a3a', '#8a5a2a', '#c8963a'][i % 3], [1.4, 0.4, 1.4]);
+          }
+          break;
+        case 'bramble':
+          // Blackberry (Rubus) thickets: a native of European woodland edges.
+          floor(tx, ty, '#5f8a3e');
+          for (let i = 0; i < 3; i++) batch.add('blob', tx + 0.2 + i * 0.3, 0.16, cz + (r(tx, ty, i) - 0.5) * 0.3, vary('#2f5a28', tx + i, ty, 0.1), [0.55, 0.45, 0.6], [r(tx, ty, i + 3), r(tx, ty, i + 6), 0]);
+          for (let i = 0; i < 4; i++) batch.add('petal', tx + 0.15 + r(tx, ty, i + 9) * 0.7, 0.32, ty + 0.2 + r(tx, ty, i + 13) * 0.6, i % 2 ? '#2a1a3a' : '#a02a3a');
+          break;
+        case 'kiln': {
+          // A charcoal burner's kiln: a stack of wood sealed under earth and turf, smoldering for days.
+          floor(tx, ty, '#4a3e32');
+          batch.add('blob', cx, 0.18, cz, '#4a3a2e', [2.0, 1.15, 2.0]);
+          batch.add('blob', cx, 0.42, cz, '#5a6a3a', [1.3, 0.7, 1.3], [0, r(tx, ty, 1) * 3, 0]);
+          for (let i = 0; i < 3; i++) batch.add('blob', cx + 0.05 * i, 0.95 + i * 0.32, cz - 0.05 * i, '#a8a4a0', [0.22 + i * 0.1, 0.2 + i * 0.08, 0.22 + i * 0.1]);
+          const ember = new THREE.MeshBasicMaterial({ color: '#ff7a2a' });
+          glows.push({ material: ember, base: ember.color.clone() });
+          const vent = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.06), ember);
+          vent.position.set(cx, 0.14, cz + 0.62);
+          group.add(vent);
+          break;
+        }
+        case 'millwheel': {
+          // An undershot water wheel in the millrace, turning on an axle into the millhouse wall.
+          floor(tx, ty, '#6a5a3a', 0.04, -0.45);
+          batch.add('water', cx, -0.12, cz, '#3b8ac0');
+          const wheel = new THREE.Group();
+          wheel.position.set(cx, 0.45, cz - 0.1);
+          const wood = toon('#7a5230');
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.05, 5, 16), wood);
+          rim.castShadow = true;
+          wheel.add(rim);
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.2, 0.05), wood);
+            spoke.rotation.z = a;
+            const paddle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.32), toon('#8a6238'));
+            paddle.position.set(Math.cos(a) * 0.66, Math.sin(a) * 0.66, 0);
+            paddle.rotation.z = a;
+            wheel.add(spoke, paddle);
+          }
+          const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6), toon('#4a3020'));
+          axle.rotation.x = Math.PI / 2;
+          axle.position.z = -0.3;
+          wheel.add(axle);
+          group.add(wheel);
+          spinners.push(wheel);
           break;
         }
 
@@ -486,12 +629,28 @@ export function buildTerrain(map: TileMap): Terrain {
         }
 
         // --- Neo-Tokyo ---
-        case 'asphalt':
-          floor(tx, ty, '#2a2c34', 0.02);
-          if ((tx + ty * 3) % 5 === 0) batch.add('neon', cx, 0.005, cz, '#c8b858', [0.5, 0.01, 0.08]);
+        case 'asphalt': {
+          floor(tx, ty, '#23252d', 0.02);
+          const up = isRoad(tx, ty - 1);
+          const down = isRoad(tx, ty + 1);
+          if (crossing(tx) && (up || down)) {
+            // Zebra crossing, Shibuya style.
+            for (let i = 0; i < 3; i++) batch.add('neon', tx + 0.17 + i * 0.33, 0.004, cz, '#c8c8c0', [0.18, 0.01, 0.9]);
+            break;
+          }
+          if (!up) batch.add('neon', cx, 0.004, ty + 0.1, '#c8c8c0', [1, 0.01, 0.05]);
+          else if (!isRoad(tx, ty - 2) && tx % 2 === 0) batch.add('neon', cx, 0.004, ty + 0.02, '#d8c060', [0.5, 0.01, 0.05]);
+          if (!down) batch.add('neon', cx, 0.004, ty + 0.9, '#c8c8c0', [1, 0.01, 0.05]);
+          else if (!isRoad(tx, ty + 2) && tx % 2 === 0) batch.add('neon', cx, 0.004, ty + 0.98, '#d8c060', [0.5, 0.01, 0.05]);
+          if (r(tx, ty, 4) < 0.3) batch.add('neon', tx + 0.2 + r(tx, ty, 5) * 0.6, 0.003, cz, REFLECTION[Math.floor(r(tx, ty, 6) * 4)], [0.12, 0.01, 0.7]);
+          if (r(tx, ty, 7) < 0.04) batch.add('barrel', cx, -0.37, cz, '#3a3c44', [0.6, 0.5, 0.6]);
           break;
+        }
         case 'sidewalk':
-          floor(tx, ty, '#4a4c56', 0.03);
+          // Paving slabs, with a raised curb along the road.
+          floor(tx, ty, (tx + ty) % 2 ? '#50525e' : '#4a4c58', 0.02);
+          if (isRoad(tx, ty + 1)) batch.add('block', cx, 0, ty + 0.94, '#8a8e9a', [1, 0.07, 0.12]);
+          if (isRoad(tx, ty - 1)) batch.add('block', cx, 0, ty + 0.06, '#8a8e9a', [1, 0.07, 0.12]);
           break;
         case 'plaza':
           floor(tx, ty, (tx + ty) % 2 ? '#5a5866' : '#4e4c5a', 0.02);
@@ -500,21 +659,68 @@ export function buildTerrain(map: TileMap): Terrain {
           floor(tx, ty, '#16171d', 0.02);
           break;
         case 'neonblock': {
+          // The bottom edge of the map sits between the camera and everything else: keep it low.
+          if (ty === map.height - 1) {
+            batch.add('block', cx, 0, cz, '#1e2032', [1, 0.5, 1]);
+            batch.add('neon', cx, 0.5, ty + 0.05, NEON[Math.floor(r(tx, ty, 2) * 4)], [1, 0.03, 0.03]);
+            break;
+          }
+          const cut = interiorNorth(tx, ty);
+          const b = cut ? cutBatchFor(cut) : batch;
+          if (cut) batch.add('block', cx, 0, cz, '#2a2c3c', [0.98, 0.4, 0.98]);
           const h = 2.6 + r(tx, ty, 1) * 2.2;
-          batch.add('block', cx, 0, cz, vary('#1e2030', tx, ty, 0.05), [1, h, 1]);
-          const neon = ['#ff3fd0', '#3fe0ff', '#ffd23f', '#7a5aff'][Math.floor(r(tx, ty, 2) * 4)];
-          if (lookAt(tx, ty + 1) !== 'neonblock') {
-            batch.add('neon', cx, 1.6 + r(tx, ty, 3), cz + 0.51, neon, [0.9, 0.06, 0.02]);
-            for (let i = 0; i < 3; i++) if (r(tx, ty, i + 5) < 0.5) batch.add('neon', tx + 0.25 + i * 0.25, 0.8 + r(tx, ty, i + 9) * (h - 1.2), cz + 0.51, '#ffe6a0', [0.12, 0.16, 0.02]);
+          const body = ['#1e2032', '#251f38', '#1a2436', '#2a2134'][Math.floor(r(tx, ty, 11) * 4)];
+          b.add('block', cx, 0, cz, vary(body, tx, ty, 0.04), [1, h, 1]);
+          // Rooftops are most of what the high camera sees: caps, AC units, water tanks and antennas.
+          b.add('block', cx, h, cz, '#343850', [1, 0.06, 1]);
+          if (r(tx, ty, 12) < 0.35) b.add('block', tx + 0.3, h, ty + 0.35, '#6a6e7c', [0.32, 0.2, 0.26]);
+          if (r(tx, ty, 13) < 0.15) b.add('barrel', tx + 0.65, h, ty + 0.6, '#7a7e8c', [0.5, 0.55, 0.5]);
+          if (r(tx, ty, 14) < 0.1) {
+            b.add('block', tx + 0.7, h, ty + 0.3, '#5a5e6a', [0.04, 0.9, 0.04]);
+            b.add('neon', tx + 0.7, h + 0.92, ty + 0.3, '#ff2a2a', [0.08, 0.08, 0.08]);
+          }
+          const south = lookAt(tx, ty + 1);
+          if (south !== 'neonblock' && south !== null) {
+            const neon = NEON[Math.floor(r(tx, ty, 2) * 4)];
+            b.add('neon', cx, h - 0.15, cz + 0.51, neon, [1, 0.05, 0.02]);
+            // Window grid: some lit warm, some cool, some dark.
+            for (let y = 1.0; y < h - 0.35; y += 0.42) {
+              for (const wx of [0.28, 0.72]) {
+                const lit = r(tx * 3 + wx * 10, ty + y * 7, 15);
+                if (lit < 0.55) b.add('neon', tx + wx, y, cz + 0.51, lit < 0.3 ? '#ffd9a0' : '#a8d8ff', [0.24, 0.16, 0.02]);
+              }
+            }
+            if (south !== 'alley') {
+              // Ground-floor shopfront with an awning.
+              b.add('neon', cx, 0.42, cz + 0.51, ['#fff0d8', '#d8f0ff', '#ffd8f0'][Math.floor(r(tx, ty, 16) * 3)], [0.8, 0.5, 0.02]);
+              b.add('block', cx, 0.78, cz + 0.62, NEON[Math.floor(r(tx, ty, 17) * 4)], [1, 0.05, 0.26]);
+            }
+            if (r(tx, ty, 18) < 0.3) {
+              // A vertical sign (kanban) sticking out over the street.
+              b.add('block', tx + 0.88, 1.0, cz + 0.62, '#1a1a24', [0.1, 1.5, 0.36]);
+              b.add('neon', tx + 0.94, 1.75, cz + 0.62, neon, [0.02, 1.4, 0.3]);
+              for (let i = 0; i < 4; i++) b.add('neon', tx + 0.95, 1.2 + i * 0.32, cz + 0.62, '#1a1a24', [0.02, 0.16, 0.16]);
+            }
           }
           break;
         }
-        case 'glasstower':
-          batch.add('block', cx, 0, cz, '#2a3a5a', [1, 4.6, 1]);
+        case 'glasstower': {
+          const cut = interiorNorth(tx, ty);
+          const b = cut ? cutBatchFor(cut) : batch;
+          if (cut) batch.add('block', cx, 0, cz, '#2a3a5a', [0.98, 0.4, 0.98]);
+          b.add('block', cx, 0, cz, '#22324e', [1, 4.6, 1]);
+          b.add('block', cx, 4.6, cz, '#2e4466', [1, 0.06, 1]);
           if (lookAt(tx, ty + 1) !== 'glasstower') {
-            for (let i = 0; i < 6; i++) batch.add('neon', cx, 0.7 + i * 0.65, cz + 0.51, '#3fe0ff', [0.95, 0.03, 0.02]);
+            // Curtain wall: floor bands, mullions and lit office panes.
+            for (let i = 0; i < 10; i++) {
+              const y = 0.5 + i * 0.42;
+              if (i % 2 === 0) b.add('neon', cx, y - 0.2, cz + 0.51, '#3fe0ff', [1, 0.025, 0.02]);
+              for (const wx of [0.25, 0.75]) if (r(tx * 2 + wx * 4, ty + i, 19) < 0.6) b.add('neon', tx + wx, y, cz + 0.51, r(tx, ty + i, 20) < 0.5 ? '#9fe8ff' : '#5a8ac8', [0.4, 0.26, 0.02]);
+            }
+            b.add('neon', cx, 4.62, cz + 0.5, '#3fe0ff', [1, 0.04, 0.04]);
           }
           break;
+        }
         case 'lobby':
           floor(tx, ty, '#8a8ea0', 0.02);
           break;
@@ -589,6 +795,103 @@ export function buildTerrain(map: TileMap): Terrain {
           batch.add('trunk', cx, 0, cz, '#4a3a2a', [0.9, 1.3, 0.9]);
           batch.add('canopy', cx, 1.75, cz, vary('#2a5a3a', tx, ty, 0.1), [1, 0.9, 1]);
           break;
+        case 'viaduct': {
+          // A concrete railway viaduct: ballast and rails on top, overhead-wire masts along the far side.
+          const north = lookAt(tx, ty - 1) !== 'viaduct';
+          batch.add('block', cx, 0, cz, vary('#6e7280', tx, ty, 0.03), [1, VIADUCT_H, 1]);
+          floor(tx, ty, '#3e4048', 0.03, VIADUCT_H + 0.02);
+          const railZ = north ? ty + 0.65 : ty + 0.35;
+          batch.add('block', cx, VIADUCT_H + 0.02, railZ, '#b8bcc8', [1, 0.05, 0.05]);
+          for (let i = 0; i < 3; i++) batch.add('block', tx + 0.17 + i * 0.33, VIADUCT_H + 0.02, north ? ty + 0.85 : ty + 0.15, '#5a4a3a', [0.1, 0.03, 0.4]);
+          if (north) batch.add('block', cx, VIADUCT_H, ty + 0.04, '#8a8e9a', [1, 0.3, 0.08]);
+          else if (tx % 4 === 0) {
+            batch.add('block', cx, VIADUCT_H, ty + 0.9, '#5a5e6a', [0.06, 1.1, 0.06]);
+            batch.add('block', cx, VIADUCT_H + 1.05, ty + 0.55, '#5a5e6a', [0.04, 0.04, 0.8]);
+          }
+          if (north) {
+            if (!viaduct) viaduct = { x0: tx, x1: tx, z: ty + 1 };
+            viaduct.x1 = tx;
+          }
+          break;
+        }
+        case 'ramen': {
+          // A ramen yatai: wooden counter with stools, a red-tiled awning hung with indigo noren
+          // curtains, red paper lanterns (akachōchin) at the ends and a steaming stockpot.
+          floor(tx, ty, '#5a5866', 0.02);
+          const left = lookAt(tx - 1, ty) !== 'ramen';
+          const right = lookAt(tx + 1, ty) !== 'ramen';
+          batch.add('block', cx, 0, ty + 0.3, '#4a3022', [1, 1.05, 0.5]);
+          batch.add('block', cx, 0, ty + 0.72, '#8a5a3a', [1, 0.55, 0.4]);
+          batch.add('block', cx, 0.55, ty + 0.75, '#c89a6a', [1, 0.05, 0.48]);
+          for (const x of [0.28, 0.72]) {
+            batch.add('barrel', tx + x, 0, ty + 1.12, '#3a3c46', [0.1, 0.55, 0.1]);
+            batch.add('barrel', tx + x, 0.42, ty + 1.12, '#b02a3a', [0.28, 0.06, 0.28]);
+          }
+          batch.add('block', cx, 1.5, ty + 0.55, '#8a2a1e', [1.04, 0.1, 1.1]);
+          batch.add('block', cx, 1.42, ty + 1.08, '#f0e8d8', [1.04, 0.12, 0.04]);
+          for (let i = 0; i < 3; i++) {
+            batch.add('block', tx + 0.18 + i * 0.32, 1.12, ty + 1.08, '#2a2a5a', [0.28, 0.32, 0.02]);
+            batch.add('neon', tx + 0.18 + i * 0.32, 1.2, ty + 1.095, '#f0e8d8', [0.1, 0.1, 0.01]);
+          }
+          if (left) batch.add('block', tx + 0.05, 0, ty + 1.02, '#4a3022', [0.08, 1.5, 0.08]);
+          if (right) batch.add('block', tx + 0.95, 0, ty + 1.02, '#4a3022', [0.08, 1.5, 0.08]);
+          if (left || right) {
+            const lantern = new THREE.MeshBasicMaterial({ color: '#ff5a3a' });
+            glows.push({ material: lantern, base: lantern.color.clone() });
+            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 10), lantern);
+            mesh.position.set(left ? tx + 0.05 : tx + 0.95, 1.2, ty + 1.2);
+            group.add(mesh);
+          }
+          if (!left && !right) {
+            // The middle of the stall: a stockpot with rising steam, and a sign on the roof.
+            batch.add('barrel', cx, 1.05, ty + 0.3, '#9aa0aa', [0.55, 0.4, 0.55]);
+            for (let i = 0; i < 3; i++) batch.add('blob', cx + (i - 1) * 0.08, 1.45 + i * 0.22, ty + 0.3, '#e8eef4', [0.2 + i * 0.06, 0.16 + i * 0.05, 0.2 + i * 0.06]);
+            batch.add('block', cx, 1.6, ty + 0.9, '#ffd23f', [0.8, 0.3, 0.06]);
+            batch.add('neon', cx, 1.75, ty + 0.94, '#b02a3a', [0.6, 0.14, 0.01]);
+          }
+          break;
+        }
+        case 'tamagaki': {
+          // A shrine's vermilion wooden fence, joined to its neighbors.
+          floor(tx, ty, '#5a5866', 0.02);
+          batch.add('stake', cx, 0, cz, '#c8321e', [0.5, 0.75, 0.5]);
+          const arms: Array<[number, number]> = [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ];
+          for (const [dx, dz] of arms) {
+            if (lookAt(tx + dx, ty + dz) !== 'tamagaki') continue;
+            const size: [number, number, number] = dx ? [0.5, 0.07, 0.07] : [0.07, 0.07, 0.5];
+            for (const y of [0.3, 0.6]) batch.add('block', cx + dx * 0.25, y, cz + dz * 0.25, '#c8321e', size);
+          }
+          break;
+        }
+        case 'toro': {
+          // A stone lantern (tōrō) with a softly glowing fire box.
+          floor(tx, ty, '#5a5866', 0.02);
+          batch.add('block', cx, 0, cz, '#8a8a84', [0.5, 0.15, 0.5]);
+          batch.add('block', cx, 0.15, cz, '#9a9a94', [0.18, 0.55, 0.18]);
+          batch.add('block', cx, 0.95, cz, '#8a8a84', [0.42, 0.06, 0.42]);
+          batch.add('flatcone', cx, 1.12, cz, '#7a7a74', [0.38, 0.6, 0.38]);
+          const fire = new THREE.MeshBasicMaterial({ color: '#ffb35a' });
+          glows.push({ material: fire, base: fire.color.clone() });
+          const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.3), fire);
+          box.position.set(cx, 0.83, cz);
+          group.add(box);
+          break;
+        }
+        case 'ema':
+          // A rack of ema: small wooden plaques where visitors write their wishes.
+          floor(tx, ty, '#5a5866', 0.02);
+          batch.add('block', tx + 0.1, 0, cz, '#6a4a32', [0.08, 1.0, 0.08]);
+          batch.add('block', tx + 0.9, 0, cz, '#6a4a32', [0.08, 1.0, 0.08]);
+          batch.add('block', cx, 1.0, cz, '#4a3a2a', [1, 0.08, 0.3]);
+          for (let row = 0; row < 2; row++) {
+            for (let i = 0; i < 4; i++) batch.add('block', tx + 0.2 + i * 0.2, 0.45 + row * 0.25, cz + 0.05, i % 3 ? '#e8c890' : '#d8b878', [0.15, 0.13, 0.03]);
+          }
+          break;
         case 'railing':
           floor(tx, ty, '#4a4c56', 0.03);
           batch.add('block', cx, 0.5, cz, '#8a92a0', [1, 0.05, 0.06]);
@@ -613,7 +916,9 @@ export function buildTerrain(map: TileMap): Terrain {
           floor(tx, ty, '#d8c08a', 0.03, 0.08);
           break;
         case 'ruinwall': {
-          const h = 0.8 + r(tx, ty, 1) * 1.8;
+          // The city's south wall sits right above the Metro station: keep it low so it doesn't hide the street.
+          const overStation = lookAt(tx, ty + 1) === 'tunnelwall' || lookAt(tx, ty + 1) === 'metrostairs';
+          const h = overStation ? 0.4 + r(tx, ty, 1) * 0.3 : 0.8 + r(tx, ty, 1) * 1.8;
           batch.add('block', cx, 0, cz, vary('#8a8680', tx, ty, 0.08), [1, h, 1]);
           if (r(tx, ty, 2) < 0.4) batch.add('block', cx + 0.2, h, cz, '#6a4030', [0.03, 0.4, 0.03]);
           break;
@@ -634,13 +939,114 @@ export function buildTerrain(map: TileMap): Terrain {
           batch.add('block', cx, 0, cz, '#8a8680', [0.9, 0.6, 0.8], [0.15, r(tx, ty, 1) * 3, 0.1]);
           batch.add('block', cx + 0.2, 0.4, cz, '#7a7670', [0.5, 0.35, 0.5], [0.3, r(tx, ty, 2) * 3, 0]);
           break;
+        case 'cot': {
+          // A folding camp cot, two tiles long: steel frame, thin mattress, a rust-red wool blanket.
+          floor(tx, ty, '#d8dce4', 0.02);
+          const head = lookAt(tx, ty - 1) !== 'cot';
+          for (const x of [0.15, 0.85]) batch.add('block', tx + x, 0, cz, '#5a5e68', [0.05, 0.35, 0.05]);
+          batch.add('block', cx, 0.33, cz, '#5a5e68', [0.8, 0.04, 1]);
+          batch.add('block', cx, 0.37, cz, '#c8ccd0', [0.74, 0.08, 1]);
+          if (head) batch.add('block', cx, 0.45, ty + 0.25, '#f0ece4', [0.6, 0.1, 0.3]);
+          else batch.add('block', cx, 0.45, cz - 0.1, '#9a3a2a', [0.78, 0.07, 0.9], [0.05, 0, 0]);
+          break;
+        }
+        case 'books': {
+          // Towers of rescued books and loose notes.
+          floor(tx, ty, '#d8dce4', 0.02);
+          const spines = ['#7a2a2a', '#2a4a7a', '#3a6a3a', '#8a6a2a', '#5a3a6a', '#e8e0cc'];
+          for (let pile = 0; pile < 2; pile++) {
+            const px = tx + 0.28 + pile * 0.44;
+            const pz = ty + 0.35 + r(tx, ty, pile) * 0.3;
+            const count = 3 + Math.floor(r(tx, ty, pile + 2) * 4);
+            for (let i = 0; i < count; i++) {
+              batch.add('block', px, i * 0.09, pz, spines[Math.floor(r(tx, ty, i + pile * 7) * spines.length)], [0.32, 0.08, 0.24], [0, (r(tx, ty, i + 20) - 0.5) * 0.5, 0]);
+            }
+          }
+          for (let i = 0; i < 3; i++) batch.add('block', tx + 0.15 + r(tx, ty, i + 30) * 0.7, 0, ty + 0.75 + r(tx, ty, i + 33) * 0.2, '#f4f0e4', [0.18, 0.01, 0.14], [0, r(tx, ty, i + 36) * 3, 0]);
+          break;
+        }
+        case 'brokencase':
+          // A smashed showcase: an empty pedestal, a jagged stump of glass and shards all around.
+          floor(tx, ty, (tx + ty) % 2 ? '#d8d4cc' : '#b8b4ac', 0.02);
+          batch.add('block', cx, 0, cz, '#5a4a3a', [0.8, 0.6, 0.6]);
+          batch.add('glass', cx - 0.2, 0.6, cz, '#d8f0ff', [0.3, 0.22, 0.56]);
+          batch.add('block', cx - 0.38, 0.6, cz - 0.28, '#b8963a', [0.03, 0.62, 0.03]);
+          batch.add('block', cx + 0.38, 0.6, cz + 0.28, '#b8963a', [0.03, 0.3, 0.03], [0, 0, 0.6]);
+          for (let i = 0; i < 5; i++) batch.add('block', tx + 0.1 + r(tx, ty, i) * 0.8, 0, ty + 0.75 + r(tx, ty, i + 5) * 0.25, '#cfe8f4', [0.12, 0.02, 0.07], [0, r(tx, ty, i + 9) * 3, 0]);
+          break;
+        case 'litter':
+          // Two hundred years of what visitors left behind: papers, cans, a museum leaflet.
+          floor(tx, ty, (tx + ty) % 2 ? '#d8d4cc' : '#b8b4ac', 0.02);
+          for (let i = 0; i < 3; i++) batch.add('block', tx + 0.15 + r(tx, ty, i) * 0.7, 0, ty + 0.15 + r(tx, ty, i + 3) * 0.7, i ? '#e8e0cc' : '#c8d8e8', [0.22, 0.01, 0.16], [0, r(tx, ty, i + 6) * 3, 0]);
+          batch.add('barrel', tx + 0.3 + r(tx, ty, 9) * 0.4, 0, ty + 0.3 + r(tx, ty, 10) * 0.4, '#b02a3a', [0.12, 0.14, 0.12]);
+          break;
+        case 'glassshards':
+          // Marble strewn with the glass of smashed display cases.
+          floor(tx, ty, (tx + ty) % 2 ? '#d8d4cc' : '#b8b4ac', 0.02);
+          for (let i = 0; i < 6; i++) {
+            batch.add('block', tx + 0.15 + r(tx, ty, i) * 0.7, 0, ty + 0.15 + r(tx, ty, i + 6) * 0.7, '#cfe8f4', [0.14, 0.02, 0.08], [0, r(tx, ty, i + 12) * 3, 0]);
+          }
+          break;
+        case 'terminal': {
+          // An old security console: a slanted desk with one dim screen still on standby.
+          floor(tx, ty, '#b8b4ac', 0.02);
+          batch.add('block', cx, 0, cz, '#4a4e58', [0.7, 0.75, 0.5]);
+          batch.add('block', cx, 0.75, cz + 0.05, '#3a3e48', [0.7, 0.08, 0.45], [-0.4, 0, 0]);
+          const screen = new THREE.MeshBasicMaterial({ color: '#5aff8a' });
+          glows.push({ material: screen, base: screen.color.clone() });
+          const panel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.22, 0.02), screen);
+          panel.position.set(cx, 0.95, cz + 0.12);
+          panel.rotation.x = -0.4;
+          group.add(panel);
+          break;
+        }
+        case 'metrostairs':
+          // Stairs down into the Metro, half buried in sand.
+          for (let i = 0; i < 4; i++) floor(tx, ty, i % 2 ? '#8a8478' : '#9a948a', 0.02, -0.12 * i - (ty % 2) * 0.48);
+          batch.add('block', cx, -0.6, ty + 0.85, '#d8c08a', [1, 0.5, 0.3]);
+          break;
+        case 'platform':
+          // A Metro platform: worn tiles, with the yellow safety line along the tracks.
+          floor(tx, ty, (tx + ty) % 2 ? '#6a6660' : '#5e5a54', 0.02);
+          if (lookAt(tx, ty + 1) === 'tracks') batch.add('neon', cx, 0.005, ty + 0.85, '#c8b030', [1, 0.01, 0.08]);
+          break;
+        case 'tracks':
+          floor(tx, ty, '#3e3a34', 0.03, -0.05);
+          for (let i = 0; i < 3; i++) batch.add('block', tx + 0.17 + i * 0.33, -0.05, cz, '#5a4a3a', [0.12, 0.04, 0.8]);
+          if (lookAt(tx, ty - 1) !== 'tracks' || lookAt(tx, ty + 1) !== 'tracks') break;
+          batch.add('block', cx, -0.01, ty + 0.3, '#8a8478', [1, 0.05, 0.05]);
+          batch.add('block', cx, -0.01, ty + 0.7, '#8a8478', [1, 0.05, 0.05]);
+          break;
+        case 'tunnelwall':
+          // Drawn low, like a cutaway model, so the camera can see into the station.
+          batch.add('block', cx, 0, cz, vary('#3a3834', tx, ty, 0.06), [1, 0.5, 1]);
+          break;
+        case 'cistern':
+          // A cistern catching the groundwater that still seeps through the tunnel walls.
+          floor(tx, ty, '#4a463e', 0.02);
+          batch.add('barrel', cx, 0, cz, '#7a7468', [1.3, 0.55, 1.3]);
+          batch.add('water', cx, 0.42, cz, '#2a6a9a', [0.7, 0.1, 0.7]);
+          break;
         case 'marble':
           floor(tx, ty, (tx + ty) % 2 ? '#d8d4cc' : '#b8b4ac', 0.02);
           break;
         case 'museumwall':
-          batch.add('block', cx, 0, cz, '#d8d2c4', [1, 2.4, 1]);
-          if (lookAt(tx, ty + 1) !== 'museumwall') batch.add('block', cx, 2.2, cz + 0.08, '#e8e2d4', [1, 0.2, 1.1]);
+        case 'wallpanel': {
+          // Like Neo-Tokyo's buildings, the walls right south of a hall sink while Andrew is inside.
+          const cut = interiorNorth(tx, ty);
+          if (cut) batch.add('block', cx, 0, cz, '#c8c2b4', [0.98, 0.4, 0.98]);
+          const b = cut ? cutBatchFor(cut) : batch;
+          b.add('block', cx, 0, cz, '#d8d2c4', [1, 2.4, 1]);
+          if (lookAt(tx, ty + 1) !== 'museumwall') b.add('block', cx, 2.2, cz + 0.08, '#e8e2d4', [1, 0.2, 1.1]);
+          if (look === 'wallpanel') {
+            // An access panel at hand height on the outer face: steel plate, dark screen, keypad, red standby light.
+            b.add('block', cx, 0.55, cz + 0.53, '#6a6e78', [0.5, 0.6, 0.06]);
+            b.add('neon', cx, 0.98, cz + 0.565, '#1a2a3a', [0.34, 0.18, 0.01]);
+            for (let i = 0; i < 6; i++) b.add('block', cx - 0.1 + (i % 3) * 0.1, 0.62 + Math.floor(i / 3) * 0.1, cz + 0.565, '#a8acb4', [0.07, 0.06, 0.02]);
+            b.add('neon', cx + 0.17, 1.08, cz + 0.565, '#ff2a2a', [0.05, 0.05, 0.01]);
+          }
           break;
+        }
         case 'column':
           floor(tx, ty, '#d8d4cc', 0.02);
           batch.add('barrel', cx, 0, cz, '#e0dacc', [0.9, 2.8, 0.9]);
@@ -652,9 +1058,20 @@ export function buildTerrain(map: TileMap): Terrain {
           batch.add('block', cx - 0.05, 0.5, cz, '#6a3a20', [0.5, 0.3, 0.55]);
           break;
         case 'showcase':
+          // A wooden pedestal under a clear glass case with a brass frame, so what's inside reads clearly.
           floor(tx, ty, (tx + ty) % 2 ? '#d8d4cc' : '#b8b4ac', 0.02);
           batch.add('block', cx, 0, cz, '#5a4a3a', [0.8, 0.6, 0.6]);
-          batch.add('water', cx, 0.9, cz, '#c8e8f0', [0.78, 1.5, 0.58]);
+          batch.add('glass', cx, 0.6, cz, '#d8f0ff', [0.76, 0.62, 0.56]);
+          for (const [dx, dz] of [
+            [-0.38, -0.28],
+            [0.38, -0.28],
+            [-0.38, 0.28],
+            [0.38, 0.28],
+          ]) {
+            batch.add('block', cx + dx, 0.6, cz + dz, '#b8963a', [0.03, 0.62, 0.03]);
+          }
+          for (const dz of [-0.28, 0.28]) batch.add('block', cx, 1.22, cz + dz, '#b8963a', [0.8, 0.03, 0.03]);
+          for (const dx of [-0.38, 0.38]) batch.add('block', cx + dx, 1.22, cz, '#b8963a', [0.03, 0.03, 0.6]);
           break;
         case 'fountain':
           floor(tx, ty, '#c8b08a', 0.04);
@@ -674,12 +1091,72 @@ export function buildTerrain(map: TileMap): Terrain {
   }
 
   batch.build(group, waterMaterial);
+  for (const cut of cuts.values()) {
+    cut.batch.build(cut.group, waterMaterial);
+    group.add(cut.group);
+  }
+  const train = viaduct ? buildTrain(viaduct) : null;
+  if (train) group.add(train.root);
   return {
     group,
-    update(time) {
+    update(time, inside) {
+      for (const [floorLook, cut] of cuts) {
+        cut.group.scale.y += ((floorLook === inside ? 0.12 : 1) - cut.group.scale.y) * 0.15;
+        cut.group.visible = cut.group.scale.y > 0.14;
+      }
       // A gentle shimmer on water and glowing props.
       waterMaterial.emissive.setHSL(0.55, 0.6, 0.05 + Math.sin(time * 1.5) * 0.03);
       for (const glow of glows) glow.material.color.copy(glow.base).offsetHSL(0, 0, Math.sin(time * 4) * 0.08);
+      for (const wheel of spinners) wheel.rotation.z = -time * 0.9;
+      train?.update(time);
+    },
+  };
+}
+
+/**
+ * A Yamanote Line train: silver cars with the line's yellow-green stripe, running
+ * across the viaduct, then waiting out of sight before the next one comes by.
+ */
+function buildTrain(track: { x0: number; x1: number; z: number }): { root: THREE.Group; update(time: number): void } {
+  const root = new THREE.Group();
+  const CARS = 5;
+  const CAR = 2.4;
+  const silver = toon('#d0d4dc');
+  const green = toon('#7ac143');
+  const glass = new THREE.MeshBasicMaterial({ color: '#2a3a52' });
+  const part = (w: number, h: number, d: number, material: THREE.Material, x: number, y: number): THREE.Mesh => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, y, 0);
+    mesh.castShadow = true;
+    return mesh;
+  };
+  for (let i = 0; i < CARS; i++) {
+    const x = -i * (CAR + 0.1);
+    root.add(part(CAR, 0.72, 0.6, silver, x, 0.42));
+    root.add(part(CAR + 0.02, 0.1, 0.62, green, x, 0.3));
+    root.add(part(CAR - 0.2, 0.2, 0.62, glass, x, 0.58));
+    root.add(part(CAR - 0.1, 0.06, 0.45, toon('#9aa0aa'), x, 0.81));
+  }
+  // The lead car's dark cab face and headlights.
+  root.add(part(0.06, 0.6, 0.6, toon('#1a1a22'), CAR / 2 + 0.02, 0.46));
+  const lights = new THREE.MeshBasicMaterial({ color: '#fff4c8' });
+  for (const z of [-0.2, 0.2]) {
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.08), lights);
+    lamp.position.set(CAR / 2 + 0.06, 0.3, z);
+    root.add(lamp);
+  }
+  const length = CARS * (CAR + 0.1);
+  const from = track.x0 - CAR;
+  const to = track.x1 + length + 1;
+  const RUN = 11;
+  const PERIOD = 24;
+  root.position.set(from, VIADUCT_H + 0.02, track.z);
+  return {
+    root,
+    update(time) {
+      const t = time % PERIOD;
+      root.visible = t < RUN;
+      root.position.x = from + ((to - from) * Math.min(t, RUN)) / RUN;
     },
   };
 }

@@ -34,7 +34,7 @@ function ground(scene: THREE.Scene, color: string, size = 40): void {
 
 export interface CinematicSet {
   scene: THREE.Scene;
-  elias: HumanRig;
+  andrew: HumanRig;
   machine: MachineRig;
   update(time: number, dt: number): void;
   setMachine(mode: MachineMode): void;
@@ -83,9 +83,9 @@ export function buildLabSet(): CinematicSet & { alarm: (on: boolean) => void } {
   machine.root.scale.setScalar(1.3);
   scene.add(machine.root);
 
-  const elias = buildHuman('elias');
-  elias.root.position.set(-2.2, 0, -0.6);
-  scene.add(elias.root);
+  const andrew = buildHuman('andrew');
+  andrew.root.position.set(-2.2, 0, -0.6);
+  scene.add(andrew.root);
 
   const alarmLight = new THREE.PointLight('#ff2020', 0, 14, 1);
   alarmLight.position.set(0, 4, 1);
@@ -95,7 +95,7 @@ export function buildLabSet(): CinematicSet & { alarm: (on: boolean) => void } {
 
   return {
     scene,
-    elias,
+    andrew,
     machine,
     setMachine: (m) => (mode = m),
     alarm: (on) => (alarmOn = on),
@@ -108,7 +108,7 @@ export function buildLabSet(): CinematicSet & { alarm: (on: boolean) => void } {
 }
 
 // ---------------------------------------------------------------------------
-// The jungle Elias wakes up in
+// The jungle Andrew wakes up in
 
 export function buildJungleSet(): CinematicSet & { flyers: Rig[] } {
   const scene = new THREE.Scene();
@@ -168,9 +168,9 @@ export function buildJungleSet(): CinematicSet & { flyers: Rig[] } {
     machineSmoke.push(puff);
   }
 
-  const elias = buildHuman('elias');
-  elias.root.position.set(-0.8, 0, 0.2);
-  scene.add(elias.root);
+  const andrew = buildHuman('andrew');
+  andrew.root.position.set(-0.8, 0, 0.2);
+  scene.add(andrew.root);
 
   const flyers: Rig[] = [];
   for (let i = 0; i < 3; i++) {
@@ -184,7 +184,7 @@ export function buildJungleSet(): CinematicSet & { flyers: Rig[] } {
   let mode: MachineMode = 'broken';
   return {
     scene,
-    elias,
+    andrew,
     machine,
     flyers,
     setMachine: (m) => (mode = m),

@@ -6,6 +6,8 @@ import type { Game, Scene } from '../game/game.ts';
 import { DialogueBox, Timers } from '../game/ui.ts';
 import { buildHuman } from '../render/humans.ts';
 import { buildLabSet } from '../render/sets.ts';
+import { Speaker } from '../game/speakers.ts';
+import { Flag } from '../game/flags.ts';
 
 /** Short notes on the real history and science behind each era, shown in the credits. */
 const NOTES = [
@@ -39,7 +41,7 @@ export class EndingScene implements Scene {
     this.nora.root.position.set(-3.6, 0, -1.6);
     this.nora.root.rotation.y = Math.PI / 2;
     this.pike.root.visible = false;
-    this.lab.elias.root.visible = false;
+    this.lab.andrew.root.visible = false;
     this.lab.setMachine('active');
   }
 
@@ -59,28 +61,28 @@ export class EndingScene implements Scene {
     await this.timers.wait(1.2);
     this.lab.setMachine('idle');
     this.game.audio.sfx('door');
-    const elias = this.lab.elias.root;
-    elias.visible = true;
-    elias.position.set(2.2, 0, -0.2);
-    elias.rotation.y = -Math.PI / 2;
+    const andrew = this.lab.andrew.root;
+    andrew.visible = true;
+    andrew.position.set(2.2, 0, -0.2);
+    andrew.rotation.y = -Math.PI / 2;
     await this.timers.wait(0.6);
     this.pike.root.visible = true;
     this.pike.root.position.set(2.8, 0, 0.3);
     this.pike.root.rotation.y = -Math.PI / 2;
     await this.timers.wait(0.6);
     await this.say(
-      ['Nora (radio)', 'Elias? The readings spiked for a second and... You only left a minute ago. Is everything okay?'],
-      ['Elias', 'Nora. What year is it?'],
-      ['Nora', "It's 2026, obviously. Why are you looking at me like that? And... who is that?"],
-      ['Pike', 'Hello, Nora. You were an intern the last time I saw you.'],
-      ['Nora', '...Aaron Pike? Test Run #12? That run was unmanned!'],
-      ['Elias', "That's what they told us. We need to talk. About the Institute, about Pike..."],
-      ['Elias', 'And about a dinosaur named Pip.'],
-      ['Nora', '...Your coffee is still warm, by the way.'],
-      ['Elias', 'Best news I have heard in sixty-six million years.'],
+      [Speaker.Nora, 'Andrew? The readings spiked for a second and... You only left a minute ago. Is everything okay?'],
+      [Speaker.Andrew, 'Nora. What year is it?'],
+      [Speaker.Nora, "It's 2026, obviously. Why are you looking at me like that? And... who is that?"],
+      [Speaker.Pike, 'Hello, Nora. You were an intern the last time I saw you.'],
+      [Speaker.Nora, '...Aaron Pike? Test Run #12? That run was unmanned!'],
+      [Speaker.Andrew, "That's what they told us. We need to talk. About the Institute, about Pike..."],
+      [Speaker.Andrew, 'And about a dinosaur named Pip.'],
+      [Speaker.Nora, '...Your coffee is still warm, by the way.'],
+      [Speaker.Andrew, 'Best news I have heard in sixty-six million years.'],
     );
     this.game.audio.music('ending');
-    state.setFlag('completed');
+    state.setFlag(Flag.Completed);
     state.save();
     this.stage = 'credits';
   }
@@ -102,7 +104,7 @@ export class EndingScene implements Scene {
     const ui = screen.ui;
     if (this.stage === 'lab') {
       this.lab.update(time, 0);
-      this.lab.elias.animate(time, 0);
+      this.lab.andrew.animate(time, 0);
       this.nora.animate(time, 0);
       this.pike.animate(time, 0);
       this.camera.position.set(0.4, 2.3, 6.2);

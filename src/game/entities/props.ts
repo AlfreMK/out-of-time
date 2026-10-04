@@ -1,10 +1,12 @@
-import type { DecorKind, Facing, Line, Script } from '../../eras/types.ts';
+import type { SfxName } from '../../engine/audio.ts';
+import type { DecorKind, Facing, Line, ObstacleLook, Script, SleeperSpec } from '../../eras/types.ts';
 import { ITEMS } from '../items.ts';
 import type { NpcLook } from '../looks.ts';
 import type { ItemId } from '../state.ts';
 import type { World } from '../world.ts';
 import { Entity } from './entity.ts';
 import type { Food } from './watcher.ts';
+import { progress } from '../flags.ts';
 
 export class Npc extends Entity {
   readonly look: NpcLook;
@@ -83,7 +85,7 @@ export class Machine extends Entity {
   }
 
   get fixed(): boolean {
-    return this.world.flag(`fixed:${this.world.era}`);
+    return this.world.flag(progress.fixed(this.world.era));
   }
 }
 
@@ -106,10 +108,10 @@ export class Inspect extends Entity {
 }
 
 export class Obstacle extends Entity {
-  readonly look: 'boulder' | 'column';
+  readonly look: ObstacleLook;
   private readonly onUse: Script;
 
-  constructor(x: number, y: number, look: 'boulder' | 'column', label: string, onUse: Script) {
+  constructor(x: number, y: number, look: ObstacleLook, label: string, onUse: Script) {
     super();
     this.x = x;
     this.y = y;
@@ -127,15 +129,19 @@ export class Obstacle extends Entity {
 
 /** A sleeping T-Rex. Any noise that reaches it wakes it up. */
 export class Sleeper extends Entity {
+  readonly look: 'rex' | 'boar';
   readonly caughtLines: Line[];
+  readonly sound: SfxName;
 
-  constructor(x: number, y: number, caught: Line[]) {
+  constructor(x: number, y: number, spec: SleeperSpec) {
     super();
     this.x = x;
     this.y = y;
-    this.caughtLines = caught;
-    this.solid = { hw: 15, hh: 6, offsetY: -4 };
-    this.height = 20;
+    this.look = spec.look ?? 'rex';
+    this.caughtLines = spec.caught;
+    this.sound = spec.sound ?? 'roar';
+    this.solid = this.look === 'boar' ? { hw: 7, hh: 5, offsetY: -4 } : { hw: 15, hh: 6, offsetY: -4 };
+    this.height = this.look === 'boar' ? 10 : 20;
   }
 
   override update(dt: number, world: World): void {

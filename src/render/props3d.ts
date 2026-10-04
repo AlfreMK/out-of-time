@@ -38,6 +38,154 @@ export function buildColumn(): THREE.Group {
   return root;
 }
 
+/** A coihue trunk brought down by a storm, lying across a forest path. */
+export function buildLog(): THREE.Group {
+  const root = new THREE.Group();
+  const trunk = cylinder(0.26, 0.3, 1.7, '#6a4a32', 0, 0.28, 0, { outline: true }, 9);
+  trunk.rotation.z = Math.PI / 2;
+  trunk.rotation.y = 0.15;
+  root.add(trunk);
+  root.add(cylinder(0.27, 0.27, 0.02, '#c8a070', 0.86, 0.28, 0.13, {}, 9).rotateZ(Math.PI / 2));
+  root.add(box(0.06, 0.5, 0.06, '#5a3a24', -0.4, 0.62, 0.05).rotateZ(0.5), box(0.05, 0.4, 0.05, '#5a3a24', 0.3, 0.6, -0.08).rotateZ(-0.6));
+  root.add(ball(0.2, '#3f6a32', -0.62, 0.82, 0.05), ball(0.16, '#4a7a3a', 0.45, 0.78, -0.1), ball(0.12, '#2f5a2a', -0.75, 0.2, 0.25));
+  return root;
+}
+
+/** A museum exhibit standing on a showcase pedestal (the glass case is part of the tile). */
+function buildExhibit(kind: DecorKind): THREE.Group {
+  const g = new THREE.Group();
+  g.position.y = 0.6;
+  const o = { outline: true };
+  if (kind === 'exhibit_deck' || kind === 'exhibit_clock') {
+    // Artifacts from 2087: the same models as the items Andrew carried.
+    const item = buildItem(kind === 'exhibit_deck' ? 'deck' : 'clock');
+    item.scale.setScalar(1.5);
+    item.position.y = 0.12;
+    g.add(item);
+  } else if (kind === 'exhibit_idol') {
+    // A collector's figure of Hoshi Kirara, the (fictional) virtual idol, pink twin tails and all.
+    g.add(cylinder(0.1, 0.1, 0.03, '#2a2a3a', 0, 0.015, 0, {}, 12));
+    g.add(cone(0.08, 0.12, '#b48aff', 0, 0.12, 0, {}, 10), box(0.08, 0.1, 0.06, '#f4f0ff', 0, 0.22, 0));
+    g.add(ball(0.06, '#ffe0d0', 0, 0.31, 0), ball(0.065, '#ff5ac8', 0, 0.33, -0.01));
+    for (const x of [-0.07, 0.07]) {
+      const tail = cone(0.03, 0.2, '#ff5ac8', x, 0.22, -0.02);
+      tail.rotation.z = Math.PI + x * 2;
+      g.add(tail);
+    }
+  } else if (kind === 'exhibit_meteorite') {
+    // Pitted, dark iron-nickel.
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.15), toon('#4a4642', { emissive: '#1a1814' }));
+    rock.position.y = 0.14;
+    rock.scale.set(1.2, 0.8, 1);
+    g.add(outline(rock), ball(0.03, '#2a2622', 0.08, 0.2, 0.1), ball(0.025, '#2a2622', -0.06, 0.16, 0.12));
+  } else if (kind === 'exhibit_ammonite') {
+    // A spiral shell set in stone.
+    g.add(box(0.34, 0.05, 0.26, '#a89878', 0, 0.025, 0, o));
+    const shell = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.045, 6, 14), toon('#c8a878'));
+    shell.position.set(0, 0.1, 0);
+    shell.rotation.x = -1.2;
+    g.add(outline(shell), ball(0.04, '#b8986a', 0.03, 0.12, 0.02));
+  } else if (kind === 'exhibit_trilobite') {
+    // A three-lobed sea arthropod on a slab.
+    g.add(box(0.34, 0.05, 0.26, '#8a8478', 0, 0.025, 0, o));
+    g.add(box(0.12, 0.04, 0.2, '#5a4a3a', 0, 0.07, 0), box(0.05, 0.05, 0.2, '#4a3a2a', 0, 0.09, 0), box(0.14, 0.04, 0.05, '#5a4a3a', 0, 0.08, -0.1));
+  } else if (kind === 'exhibit_lynx') {
+    // A stuffed Iberian lynx: spotted coat, ear tufts, a beard of fur.
+    const fur = '#c8a070';
+    g.add(box(0.12, 0.12, 0.3, fur, 0, 0.16, 0, o));
+    for (const [x, z] of [
+      [-0.04, 0.1],
+      [0.04, 0.1],
+      [-0.04, -0.1],
+      [0.04, -0.1],
+    ]) {
+      g.add(box(0.035, 0.12, 0.035, fur, x, 0.06, z));
+    }
+    g.add(box(0.12, 0.11, 0.1, fur, 0, 0.27, 0.17, o), box(0.025, 0.06, 0.02, '#1a1a1a', -0.04, 0.35, 0.15), box(0.025, 0.06, 0.02, '#1a1a1a', 0.04, 0.35, 0.15));
+    for (let i = 0; i < 4; i++) g.add(box(0.025, 0.02, 0.025, '#3a2a1a', -0.04 + (i % 2) * 0.08, 0.22, -0.08 + i * 0.05));
+  } else {
+    // A model of a dodo: grey, plump, with a big hooked beak.
+    g.add(ball(0.13, '#8a8a90', 0, 0.15, 0, o), ball(0.07, '#9a9aa0', 0, 0.3, 0.08), cone(0.04, 0.1, '#c8b060', 0, 0.3, 0.17).rotateX(Math.PI / 2));
+    g.add(box(0.03, 0.06, 0.03, '#c8b060', -0.04, 0.03, 0), box(0.03, 0.06, 0.03, '#c8b060', 0.04, 0.03, 0), cone(0.05, 0.08, '#e8e4dc', 0, 0.2, -0.13).rotateX(-1.2));
+  }
+  return g;
+}
+
+/** A mineral specimen, true to how each one grows. They glow faintly so they read in the dark hall. */
+function buildCrystal(kind: DecorKind): THREE.Group {
+  const g = new THREE.Group();
+  g.position.y = 0.6;
+  g.scale.setScalar(1.7);
+  const mat = (color: string, glowColor: string, opacity = 1): THREE.MeshToonMaterial =>
+    toon(color, { emissive: glowColor, emissiveIntensity: 0.5, transparent: opacity < 1, opacity });
+  const mesh = (geometry: THREE.BufferGeometry, material: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh => {
+    const m = new THREE.Mesh(geometry, material);
+    m.position.set(x, y, z);
+    return m;
+  };
+  if (kind === 'crystal_quartz') {
+    // Quartz: a clear six-sided column ending in a six-sided point.
+    const clear = mat('#f4f2ff', '#5a5aa0', 0.85);
+    g.add(mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 6), clear, 0, 0.1), mesh(new THREE.ConeGeometry(0.07, 0.1, 6), clear, 0, 0.25));
+    g.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 6), clear, 0.08, 0.06).rotateZ(-0.4));
+  } else if (kind === 'crystal_beryl') {
+    // Beryl: a green six-sided column, flat on top.
+    const green = mat('#7ac8a0', '#1a5a3a', 0.9);
+    g.add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.26, 6), green, 0, 0.13));
+  } else if (kind === 'crystal_calcite') {
+    // Calcite: a clear, honey-tinted rhomb.
+    const honey = mat('#f0d8a0', '#6a4a20', 0.8);
+    const rhomb = mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), honey, 0, 0.12);
+    rhomb.rotation.set(0.6, 0.5, 0.35);
+    rhomb.scale.set(1, 0.75, 1.15);
+    g.add(rhomb);
+  } else if (kind === 'crystal_pyrite') {
+    // Pyrite: brassy little cubes in a cluster.
+    const brass = mat('#d8b84a', '#5a4810');
+    for (const [x, y, z, s] of [
+      [0, 0.06, 0, 0.11],
+      [0.08, 0.04, 0.03, 0.08],
+      [-0.07, 0.04, 0.04, 0.07],
+      [0.02, 0.15, -0.02, 0.07],
+    ]) {
+      const cube = mesh(new THREE.BoxGeometry(s, s, s), brass, x, y, z);
+      cube.rotation.y = x * 3;
+      g.add(cube);
+    }
+  } else {
+    // Fluorite: purple cubes stacked like dice, tinged green at the edges.
+    const purple = mat('#9a6ae0', '#3a1a6a', 0.9);
+    const green = mat('#7ae0a0', '#1a5a3a', 0.9);
+    g.add(mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), purple, 0, 0.07), mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), green, 0.06, 0.17, 0.02));
+  }
+  return g;
+}
+
+/** A 16th-century Spanish strongbox: oak bound with iron bands, with a heavy padlock. */
+export function buildChest(): THREE.Group {
+  const root = new THREE.Group();
+  root.add(box(0.8, 0.5, 0.5, '#6a4426', 0, 0.25, 0, { outline: true }));
+  root.add(box(0.82, 0.14, 0.52, '#5a3a20', 0, 0.55, 0, { outline: true }));
+  for (const x of [-0.3, 0, 0.3]) root.add(box(0.06, 0.64, 0.54, '#3a3a40', x, 0.32, 0));
+  root.add(box(0.14, 0.16, 0.06, '#8a8a90', 0, 0.38, 0.28), box(0.06, 0.06, 0.03, '#1a1a1a', 0, 0.36, 0.31));
+  return root;
+}
+
+/** A lab blast door, jammed halfway by a power fault: thick steel with hazard stripes. */
+export function buildBlastDoor(): THREE.Group {
+  const root = new THREE.Group();
+  root.add(box(1.0, 1.5, 0.3, '#6a7280', 0, 0.75, 0, { outline: true }));
+  for (let i = 0; i < 5; i++) {
+    const stripe = box(0.12, 0.5, 0.02, i % 2 ? '#1a1a1a' : '#ffd23f', -0.36 + i * 0.18, 0.3, 0.16);
+    stripe.rotation.z = 0.5;
+    root.add(stripe);
+  }
+  root.add(box(0.9, 0.04, 0.02, '#4a5260', 0, 0.75, 0.16), glow(0.1, 0.1, 0.02, '#ff2a2a', 0.38, 1.3, 0.16));
+  // The dent where it jammed.
+  root.add(ball(0.14, '#5a6270', -0.15, 1.05, 0.12));
+  return root;
+}
+
 export function buildItem(item: ItemId): THREE.Group {
   const g = new THREE.Group();
   const o: PartOptions = { outline: true };
@@ -123,9 +271,18 @@ export function buildItem(item: ItemId): THREE.Group {
     case 'charqui':
       for (let i = 0; i < 3; i++) g.add(box(0.06, 0.03, 0.26, i % 2 ? '#7a2a1a' : '#a84a2a', -0.07 + i * 0.07, 0, 0, o));
       break;
-    case 'deck':
-      g.add(box(0.3, 0.05, 0.2, '#1a1a2a', 0, 0, 0, o), glow(0.2, 0.01, 0.1, '#ff3fd0', 0, 0.03, 0));
+    case 'deck': {
+      // A hacker's cyberdeck: a chunky keyboard base with a flip-up glowing screen, covered in stickers.
+      g.add(box(0.34, 0.06, 0.22, '#c8ccd8', 0, 0, 0.02, o));
+      for (let i = 0; i < 3; i++) g.add(glow(0.26, 0.012, 0.03, i === 1 ? '#3fe0ff' : '#7a8aa0', 0, 0.035, -0.04 + i * 0.05));
+      const screen = box(0.3, 0.18, 0.02, '#2a2a3a', 0, 0.12, -0.1, o);
+      screen.rotation.x = -0.35;
+      screen.add(glow(0.26, 0.14, 0.012, '#ff3fd0', 0, 0, 0.012));
+      g.add(screen);
+      g.add(box(0.06, 0.04, 0.005, '#ffd23f', 0.1, 0.034, 0.1), box(0.05, 0.05, 0.005, '#5aff8a', -0.11, 0.034, 0.09));
+      g.add(cylinder(0.008, 0.008, 0.16, '#5a5e6a', 0.15, 0.12, -0.08), ball(0.018, '#ff2a2a', 0.15, 0.2, -0.08));
       break;
+    }
     case 'gold':
       g.add(outline(new THREE.Mesh(new THREE.DodecahedronGeometry(0.11), toon('#f1c232', { emissive: '#5a4000' }))));
       break;
@@ -150,6 +307,33 @@ export function buildItem(item: ItemId): THREE.Group {
     case 'powercell':
       g.add(box(0.14, 0.26, 0.14, '#2a2a3a', 0, 0, 0, o), glow(0.1, 0.16, 0.02, '#5aff8a', 0, 0, 0.08), box(0.06, 0.04, 0.06, '#9aa6bb', 0, 0.15, 0));
       break;
+    case 'water':
+      // A leather water flask with a wooden stopper.
+      g.add(cylinder(0.1, 0.12, 0.26, '#7a5a3a', 0, 0, 0, o, 10), cylinder(0.03, 0.03, 0.06, '#c8a070', 0, 0.16, 0));
+      g.add(box(0.2, 0.03, 0.02, '#3a7ab8', 0, 0.02, 0.11));
+      break;
+    case 'quartz': {
+      // A museum quartz crystal: a clear hexagonal prism on a small base.
+      const crystal = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.28, 6), toon('#f0ecff', { emissive: '#3a3060', transparent: true, opacity: 0.85 }));
+      crystal.position.y = 0.08;
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.1, 6), toon('#f0ecff', { emissive: '#3a3060' }));
+      tip.position.y = 0.27;
+      g.add(outline(crystal), tip, box(0.18, 0.05, 0.18, '#5a5650', 0, -0.08, 0));
+      break;
+    }
+    case 'navmodule':
+      // An Institute navigation module: a rugged case with a green trace display and gold contacts.
+      g.add(box(0.24, 0.08, 0.18, '#9aa6bb', 0, 0, 0, o), glow(0.16, 0.01, 0.1, '#5aff8a', 0, 0.045, 0));
+      for (let i = 0; i < 4; i++) g.add(box(0.03, 0.02, 0.03, '#f1c232', -0.075 + i * 0.05, -0.02, 0.1));
+      break;
+    case 'emitter': {
+      // A long-range field emitter: a copper coil around a glowing core, in an Institute housing.
+      g.add(box(0.26, 0.05, 0.18, '#9aa6bb', 0, -0.1, 0, o));
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 6, 14), toon('#c87533', { emissive: '#3a1a00' }));
+      coil.rotation.x = Math.PI / 2;
+      g.add(outline(coil), glow(0.07, 0.16, 0.07, '#7fd8ff', 0, 0, 0));
+      break;
+    }
     case 'notes':
       g.add(box(0.24, 0.04, 0.18, '#e8e0cc', 0, 0, 0, o), box(0.18, 0.01, 0.02, '#5a5a6a', 0, 0.03, 0.03));
       break;
@@ -164,7 +348,7 @@ export function buildItem(item: ItemId): THREE.Group {
   return g;
 }
 
-/** The shield strapped to Elias's back once he has it. */
+/** The shield strapped to Andrew's back once he has it. */
 export function buildBackShield(): THREE.Group {
   const g = buildItem('shield');
   g.scale.setScalar(1.3);
@@ -194,7 +378,8 @@ export function buildGate(look: 'laser' | 'door' | 'palisade'): GateRig {
   }
   if (look === 'door') {
     const slab = box(0.96, 1.4, 0.16, '#5a6170', 0, 0.7, 0, { outline: true });
-    slab.add(glow(0.5, 0.05, 0.02, '#3fe0ff', 0, 0.3, 0.09));
+    // The light strip shows on both faces: doors are seen from either side.
+    slab.add(glow(0.5, 0.05, 0.02, '#3fe0ff', 0, 0.3, 0.09), glow(0.5, 0.05, 0.02, '#3fe0ff', 0, 0.3, -0.09));
     root.add(slab);
     return {
       root,
@@ -282,20 +467,87 @@ export function buildDecor(kind: DecorKind): DecorRig {
       return { root, update: (time) => (cloth.rotation.y = Math.sin(time * 1.6) * 0.12) };
     }
     case 'hologram': {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.02, 4, 24), new THREE.MeshBasicMaterial({ color: '#3fe0ff' }));
+      // A giant hologram of an (original, fictional) virtual idol, Hoshi Kirara, dancing in the rain.
+      const holo = (color: string, opacity = 0.7): THREE.MeshBasicMaterial =>
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
+      const pink = holo('#ff5ac8');
+      const white = holo('#f4f0ff', 0.75);
+      const lilac = holo('#b48aff');
+      const cyan = holo('#3fe0ff', 0.8);
+      const skin = holo('#ffe0d0', 0.75);
+      const part = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z = 0): THREE.Mesh => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, y, z);
+        return mesh;
+      };
+      // The projector on the ground and its beam.
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 4, 24), new THREE.MeshBasicMaterial({ color: '#3fe0ff' }));
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 0.05;
-      const panel = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2, 0.7),
-        new THREE.MeshBasicMaterial({ color: '#ff3fd0', transparent: true, opacity: 0.45, side: THREE.DoubleSide }),
-      );
-      panel.position.y = 1.4;
-      root.add(ring, panel);
+      root.add(ring, part(new THREE.CylinderGeometry(0.45, 0.55, 0.12, 16), new THREE.MeshBasicMaterial({ color: '#1a1d2a' }), 0, 0.06));
+      root.add(part(new THREE.CylinderGeometry(0.5, 0.2, 3.2, 16, 1, true), holo('#3fe0ff', 0.08), 0, 1.7));
+      const idol = new THREE.Group();
+      idol.position.y = 0.3;
+      root.add(idol);
+      // Legs, skirt and top.
+      const legL = part(new THREE.CylinderGeometry(0.07, 0.06, 0.8, 6), white, -0.11, 0.45);
+      const legR = part(new THREE.CylinderGeometry(0.07, 0.06, 0.8, 6), white, 0.11, 0.45);
+      idol.add(legL, legR, part(new THREE.ConeGeometry(0.42, 0.45, 10, 1, true), lilac, 0, 0.98));
+      idol.add(part(new THREE.BoxGeometry(0.42, 0.5, 0.26), white, 0, 1.4), part(new THREE.BoxGeometry(0.1, 0.32, 0.02), cyan, 0, 1.42, 0.14));
+      const arm = (side: number): THREE.Group => {
+        const pivot = new THREE.Group();
+        pivot.position.set(side * 0.27, 1.6, 0);
+        pivot.add(part(new THREE.CylinderGeometry(0.06, 0.05, 0.55, 6), skin, 0, -0.27));
+        pivot.add(part(new THREE.BoxGeometry(0.13, 0.12, 0.13), lilac, 0, -0.08));
+        idol.add(pivot);
+        return pivot;
+      };
+      const armL = arm(-1);
+      const armR = arm(1);
+      // Head, big eyes, bangs, star hairclips and long pink twin tails.
+      const head = new THREE.Group();
+      head.position.y = 1.95;
+      idol.add(head);
+      head.add(part(new THREE.SphereGeometry(0.27, 12, 10), skin, 0, 0));
+      head.add(part(new THREE.SphereGeometry(0.29, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), pink, 0, 0.03));
+      for (const x of [-0.1, 0.1]) head.add(part(new THREE.BoxGeometry(0.08, 0.11, 0.02), cyan, x, -0.02, 0.26));
+      for (const x of [-0.22, 0.22]) head.add(part(new THREE.OctahedronGeometry(0.07), new THREE.MeshBasicMaterial({ color: '#ffd23f' }), x, 0.22, 0.05));
+      const tails: THREE.Group[] = [];
+      for (const side of [-1, 1]) {
+        const tail = new THREE.Group();
+        tail.position.set(side * 0.28, 0.12, -0.02);
+        const strand = part(new THREE.ConeGeometry(0.13, 1.5, 8), pink, 0, -0.72);
+        strand.rotation.z = Math.PI;
+        tail.add(strand);
+        head.add(tail);
+        tails.push(tail);
+      }
+      // Music notes floating around her.
+      const notes = [0, 1, 2].map((i) => {
+        const note = part(new THREE.SphereGeometry(0.07, 6, 5), cyan, 0, 0);
+        root.add(note);
+        return { note, i };
+      });
       return {
         root,
         update(time) {
-          panel.rotation.y = time * 0.6;
-          (panel.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(time * 7) * 0.08;
+          const beat = time * 4;
+          idol.rotation.y = Math.sin(time * 0.8) * 0.6;
+          idol.position.y = 0.3 + Math.abs(Math.sin(beat)) * 0.08;
+          armL.rotation.z = -0.4 - Math.abs(Math.sin(beat)) * 1.6;
+          armR.rotation.z = 0.4 + Math.abs(Math.cos(beat)) * 1.6;
+          legL.rotation.x = Math.sin(beat) * 0.25;
+          legR.rotation.x = -Math.sin(beat) * 0.25;
+          tails.forEach((tail, i) => (tail.rotation.z = (i ? 1 : -1) * (0.15 + Math.sin(beat + i) * 0.12)));
+          head.rotation.z = Math.sin(beat * 0.5) * 0.12;
+          // Holograms flicker.
+          const flicker = Math.random() < 0.04 ? 0.35 : 1;
+          for (const m of [pink, white, lilac, cyan, skin]) m.opacity = (m === white || m === skin ? 0.75 : 0.7) * flicker;
+          ring.rotation.z = time;
+          for (const { note, i } of notes) {
+            const a = time * 1.2 + (i * Math.PI * 2) / 3;
+            note.position.set(Math.cos(a) * 0.8, 1.2 + ((time * 0.5 + i * 0.33) % 1) * 1.6, Math.sin(a) * 0.8);
+          }
         },
       };
     }
@@ -340,31 +592,50 @@ export function buildDecor(kind: DecorKind): DecorRig {
       return still;
     }
     case 'torii': {
-      // A Shinto shrine: vermilion torii gate in front of a small wooden hall, with paper lanterns.
+      // A Shinto shrine seen from its gate: a vermilion torii, a stone path, and the hall (honden) beyond,
+      // with a shimenawa rope of twisted rice straw and an offering box at the front.
       const red = '#c8321e';
-      for (const x of [-0.7, 0.7]) root.add(cylinder(0.08, 0.09, 1.9, red, x, 0.95, 0, { outline: true }, 8));
-      root.add(box(2.0, 0.12, 0.18, '#1a1a1a', 0, 1.95, 0, { outline: true }), box(1.8, 0.1, 0.12, red, 0, 1.7, 0));
-      root.add(box(2.2, 0.06, 0.24, '#1a1a1a', 0, 2.05, 0));
+      const o = { outline: true };
+      for (const x of [-1.05, 1.05]) root.add(cylinder(0.11, 0.13, 2.7, red, x, 1.35, 0, o, 8), cylinder(0.16, 0.16, 0.2, '#1a1a1a', x, 0.1, 0, {}, 8));
+      root.add(box(3.0, 0.16, 0.26, '#1a1a1a', 0, 2.78, 0, o), box(2.6, 0.13, 0.16, red, 0, 2.45, 0), box(0.16, 0.34, 0.1, red, 0, 2.6, 0));
+      root.add(box(3.2, 0.08, 0.32, '#1a1a1a', 0, 2.9, 0));
+      // The hall sits on the five-by-two block of tiles behind the gate.
       const hall = new THREE.Group();
-      hall.position.set(0, 0, -2.5);
-      hall.add(box(2.6, 1.1, 1.6, '#8a5a3a', 0, 0.55, 0, { outline: true }), box(2.4, 0.9, 0.05, '#f0e8d8', 0, 0.6, 0.81));
-      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 3.0, 3).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2), toon('#2a2a30'));
-      roof.position.set(0, 1.45, 0);
-      roof.scale.set(1, 0.7, 1.3);
+      hall.position.set(0, 0, -4.5);
+      hall.add(box(4.8, 0.3, 2.0, '#8a8a84', 0, 0.15, 0, o));
+      for (const x of [-2.2, -0.75, 0.75, 2.2]) hall.add(cylinder(0.09, 0.09, 1.5, red, x, 1.05, 0.85, {}, 8));
+      hall.add(box(4.4, 1.3, 1.6, '#8a5a3a', 0, 0.95, -0.1, o), box(4.0, 1.0, 0.05, '#f0e8d8', 0, 0.95, 0.71));
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 5.4, 3).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2), toon('#2a3a34'));
+      roof.position.set(0, 2.15, 0);
+      roof.scale.set(1, 0.6, 1.2);
       roof.castShadow = true;
-      hall.add(roof);
+      hall.add(roof, box(5.0, 0.1, 0.12, '#d8b84a', 0, 2.55, 0));
+      const rope = cylinder(0.09, 0.09, 3.6, '#e8d8a0', 0, 1.8, 0.95, {}, 8);
+      rope.rotation.z = Math.PI / 2;
+      hall.add(rope);
+      for (const x of [-1, 0, 1]) hall.add(box(0.12, 0.3, 0.02, '#ffffff', x, 1.55, 0.97));
+      hall.add(box(1.0, 0.45, 0.5, '#5a3a24', 0, 0.52, 1.25, o), box(0.04, 0.9, 0.04, '#e8d8a0', 0.3, 1.25, 1.0));
       root.add(hall);
-      const lanterns: THREE.MeshBasicMaterial[] = [];
-      for (const x of [-1.2, 1.2]) {
-        root.add(cylinder(0.03, 0.03, 1.2, '#3a2a1a', x, 0.6, -0.8, {}, 5));
-        const glowMat = new THREE.MeshBasicMaterial({ color: '#ff9a4a' });
-        lanterns.push(glowMat);
-        const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 10), glowMat);
-        lantern.position.set(x, 1.3, -0.8);
-        root.add(lantern);
-      }
-      return { root, update: (time) => lanterns.forEach((m, i) => m.color.setHSL(0.07, 1, 0.6 + Math.sin(time * 3 + i) * 0.05)) };
+      return still;
     }
+    case 'crystal_calcite':
+    case 'crystal_beryl':
+    case 'crystal_pyrite':
+    case 'crystal_quartz':
+    case 'crystal_fluorite':
+      // Mineral specimens on a showcase pedestal (the case's glass is part of the tile).
+      root.add(buildCrystal(kind));
+      return still;
+    case 'exhibit_meteorite':
+    case 'exhibit_ammonite':
+    case 'exhibit_trilobite':
+    case 'exhibit_lynx':
+    case 'exhibit_dodo':
+    case 'exhibit_deck':
+    case 'exhibit_clock':
+    case 'exhibit_idol':
+      root.add(buildExhibit(kind));
+      return still;
     case 'megatherium': {
       // Megatherium americanum, a giant ground sloth. The Madrid skeleton (1788) was the first fossil skeleton ever mounted.
       const bone = '#e0d4b8';

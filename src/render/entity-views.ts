@@ -20,12 +20,15 @@ import {
 } from '../game/entities/props.ts';
 import { Watcher } from '../game/entities/watcher.ts';
 import type { World } from '../game/world.ts';
-import { buildDog, buildPip, buildRaptor, buildRider, buildSleepingRex } from './creatures.ts';
+import { buildDog, buildPip, buildRaptor, buildRider, buildSleepingBoar, buildSleepingRex } from './creatures.ts';
 import { buildHuman } from './humans.ts';
 import { buildBot, buildCamera, buildDrone, buildMachine } from './machines.ts';
-import { SILHOUETTE } from './materials.ts';
+import { ENEMY_SILHOUETTE, SILHOUETTE } from './materials.ts';
 import { box, cylinder } from './primitives.ts';
-import { buildBackShield, buildBoulder, buildColumn, buildDecor, buildGate, buildItem } from './props3d.ts';
+import { buildBackShield, buildBlastDoor, buildBoulder, buildChest, buildColumn, buildDecor, buildGate, buildItem, buildLog } from './props3d.ts';
+import type { ObstacleLook } from '../eras/types.ts';
+
+const OBSTACLE_BUILDERS: Record<ObstacleLook, () => THREE.Group> = { boulder: buildBoulder, column: buildColumn, log: buildLog, blastdoor: buildBlastDoor, chest: buildChest };
 
 /** Map pixels per world unit (one tile). */
 export const PX = 16;
@@ -57,16 +60,36 @@ export function createView(entity: Entity, world: World): EntityView | null {
   if (entity instanceof Ally) return allyView(entity, world);
   if (entity instanceof Pickup) return pickupView(entity);
   if (entity instanceof Machine) return machineView(entity);
-  if (entity instanceof Obstacle) return staticView(entity, entity.look === 'column' ? buildColumn() : buildBoulder());
+  if (entity instanceof Obstacle) return staticView(entity, OBSTACLE_BUILDERS[entity.look]());
   if (entity instanceof Sleeper) return sleeperView(entity);
   if (entity instanceof Companion) return companionView(entity, world);
   if (entity instanceof Bait) return staticView(entity, buildItem(entity.item), 0.1);
   if (entity instanceof Thrown) return thrownView(entity);
   if (entity instanceof FallingRock) return rockView(entity);
   if (entity instanceof Arrow) return arrowView(entity);
-  if (entity instanceof Gate) return gateView(entity);
+  if (entity instanceof Gate) return gateView(entity, world);
   if (entity instanceof Decor) return decorView(entity, world);
   return null;
+}
+
+/**
+ * Gives every mesh of a model a ghost that only draws where scenery hides it.
+ * The ghost renders after the scenery (order 1) and the model after its ghost (order 2).
+ */
+function addSilhouette(root: THREE.Object3D, material: THREE.Material): THREE.Object3D[] {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.name !== 'outline' && child.name !== 'silhouette') meshes.push(child);
+    if (child.name === 'outline') child.renderOrder = 2;
+  });
+  return meshes.map((mesh) => {
+    mesh.renderOrder = 2;
+    const ghost = new THREE.Mesh(mesh.geometry, material);
+    ghost.renderOrder = 1;
+    ghost.name = 'silhouette';
+    mesh.add(ghost);
+    return ghost;
+  });
 }
 
 function staticView(entity: Entity, object: THREE.Object3D, lift = 0): EntityView {
@@ -79,24 +102,15 @@ function staticView(entity: Entity, object: THREE.Object3D, lift = 0): EntityVie
 }
 
 function playerView(player: Player, world: World): EntityView {
-  const rig = buildHuman('elias');
+  const rig = buildHuman('andrew');
   // Own materials so the player can fade while hidden without affecting anyone else.
   const fading: THREE.Material[] = [];
   for (const mesh of rig.meshes) {
     const material = (mesh.material as THREE.Material).clone();
     mesh.material = material;
-    mesh.renderOrder = 2;
     fading.push(material);
-    const ghost = new THREE.Mesh(mesh.geometry, SILHOUETTE);
-    ghost.renderOrder = 1;
-    ghost.name = 'silhouette';
-    mesh.add(ghost);
   }
-  const ghosts: THREE.Object3D[] = [];
-  rig.root.traverse((child) => {
-    if (child.name === 'silhouette') ghosts.push(child);
-    if (child.name === 'outline') child.renderOrder = 2;
-  });
+  const ghosts = addSilhouette(rig.root, SILHOUETTE);
   const shield = buildBackShield();
   shield.position.set(0, 0.62, -0.2);
   shield.rotation.y = Math.PI;
@@ -106,7 +120,7 @@ function playerView(player: Player, world: World): EntityView {
   return {
     object: rig.root,
     update(time, dt) {
-      // Raised tiles lift Elias; while jumping down a ledge the hop arc takes over.
+      // Raised tiles lift Andrew; while jumping down a ledge the hop arc takes over.
       const tileHeight = world.map.defAt(player.x, player.y).height ?? 0;
       lift = player.isHopping ? player.hopHeight / PX : lift + (tileHeight - lift) * Math.min(1, dt * 14);
       place(rig.root, player, lift);
@@ -129,6 +143,7 @@ function watcherView(watcher: Watcher): EntityView {
   switch (watcher.kind) {
     case 'dog': {
       const rig = buildDog();
+      addSilhouette(rig.root, ENEMY_SILHOUETTE);
       return {
         object: rig.root,
         update(time, dt) {
@@ -144,19 +159,20 @@ function watcherView(watcher: Watcher): EntityView {
     case 'bot': {
       const rig = watcher.kind === 'camera' ? buildCamera() : watcher.kind === 'drone' ? buildDrone() : buildBot();
       const turning = rig.head ?? rig.root;
+      addSilhouette(rig.root, ENEMY_SILHOUETTE);
       return {
         object: rig.root,
         update(time, dt) {
           place(rig.root, watcher);
           turn(turning, yaw(), dt);
-          rig.update(time, watcher.walking ? 1 : 0, watcher.disabled);
+          rig.update(time, watcher.walking ? 1 : 0, watcher.disabled || watcher.asleep);
         },
       };
     }
     default: {
       const rig =
         watcher.kind === 'guard'
-          ? buildHuman('guard')
+          ? buildHuman(watcher.spec.look ?? 'guard')
           : watcher.kind === 'soldier'
             ? buildHuman('soldier')
             : watcher.kind === 'rider'
@@ -164,6 +180,7 @@ function watcherView(watcher: Watcher): EntityView {
               : buildRaptor();
       // Dakotaraptor was roughly 4.5-6 m long: much bigger than a person.
       if (watcher.kind === 'raptor') rig.root.scale.setScalar(1.6);
+      addSilhouette(rig.root, ENEMY_SILHOUETTE);
       return {
         object: rig.root,
         update(time, dt) {
@@ -183,7 +200,7 @@ function npcView(npc: Npc, world: World): EntityView {
     object: rig.root,
     update(time, dt) {
       place(rig.root, npc);
-      // People turn to look at Elias when he gets close.
+      // People turn to look at Andrew when he gets close.
       const dx = world.hero.x - npc.x;
       const dy = world.hero.y - npc.y;
       const near = Math.hypot(dx, dy) < 40;
@@ -193,7 +210,7 @@ function npcView(npc: Npc, world: World): EntityView {
   };
 }
 
-/** Allies crouch in cover until Elias comes near. */
+/** Allies crouch in cover until Andrew comes near. */
 function allyView(ally: Ally, world: World): EntityView {
   const rig = buildHuman(ally.look);
   return {
@@ -215,18 +232,23 @@ function pickupView(pickup: Pickup): EntityView {
   const item = buildItem(pickup.item);
   item.scale.setScalar(1.6);
   root.add(item);
+  // Like the player, items show as a silhouette when trees or walls stand between them and the camera.
+  addSilhouette(item, SILHOUETTE);
+  // The ring and the beam ignore depth so they are never hidden by scenery.
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.22, 0.3, 24),
-    new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.7, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.7, depthWrite: false, depthTest: false }),
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.03;
+  ring.renderOrder = 3;
   root.add(ring);
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(0.06, 0.18, 1.6, 10, 1, true),
-    new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.18, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
   );
   beam.position.y = 0.8;
+  beam.renderOrder = 3;
   root.add(beam);
   return {
     object: root,
@@ -253,6 +275,18 @@ function machineView(machine: Machine): EntityView {
 }
 
 function sleeperView(sleeper: Sleeper): EntityView {
+  if (sleeper.look === 'boar') {
+    const boar = buildSleepingBoar();
+    boar.root.rotation.y = -Math.PI / 2 + 0.3;
+    return {
+      object: boar.root,
+      update(time) {
+        place(boar.root, sleeper);
+        boar.root.position.z -= 0.3;
+        boar.animate(time, 0);
+      },
+    };
+  }
   const rig = buildSleepingRex();
   rig.root.scale.setScalar(0.64);
   rig.root.rotation.y = Math.PI / 2;
@@ -338,8 +372,12 @@ function arrowView(arrow: Arrow): EntityView {
   };
 }
 
-function gateView(gate: Gate): EntityView {
+function gateView(gate: Gate, world: World): EntityView {
   const rig = buildGate(gate.look);
+  // Gates face south by default; one set in a north-south wall (solid above and below) turns to match it.
+  const tx = Math.floor(gate.x / PX);
+  const ty = Math.floor((gate.y - 1) / PX);
+  if (world.map.isSolid(tx, ty - 1) && world.map.isSolid(tx, ty + 1)) rig.root.rotation.y = Math.PI / 2;
   return {
     object: rig.root,
     update(time) {

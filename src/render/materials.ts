@@ -51,6 +51,13 @@ export const SILHOUETTE = new THREE.MeshBasicMaterial({
   depthFunc: THREE.GreaterDepth,
 });
 
+/** Same trick for enemies, in red: a guard hidden by scenery is still fair to spot. */
+export const ENEMY_SILHOUETTE = new THREE.MeshBasicMaterial({
+  color: 0xe0504f,
+  depthWrite: false,
+  depthFunc: THREE.GreaterDepth,
+});
+
 const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x1a1420, side: THREE.BackSide });
 
 /**

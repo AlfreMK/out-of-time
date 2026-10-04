@@ -24,6 +24,8 @@ export class Player extends Entity {
   hopHeight = 0;
   private hop: { fromX: number; fromY: number; toX: number; toY: number; fromHeight: number; t: number } | null = null;
   private stepTimer = 0;
+  /** The tile under the player last frame, so stepping onto a noisy one always makes its noise. */
+  private lastTile = '';
   readonly hw = 4;
   readonly hh = 3;
 
@@ -96,8 +98,13 @@ export class Player extends Entity {
       }
     }
 
+    // Footsteps come every few tenths of a second, which can skip a whole tile: entering a noisy
+    // tile (bones, puddles, brushwood, broken glass) always makes its noise right away.
+    const tileKey = `${Math.floor(this.x / TILE)},${Math.floor(this.y / TILE)}`;
+    const entered = tileKey !== this.lastTile;
+    this.lastTile = tileKey;
     this.stepTimer -= dt;
-    if (this.stepTimer <= 0) {
+    if (this.stepTimer <= 0 || (entered && world.map.defAt(this.x, this.y).noise)) {
       this.stepTimer = this.sneaking ? 0.45 : 0.3;
       this.footstep(world);
     }

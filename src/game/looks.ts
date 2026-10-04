@@ -8,6 +8,7 @@ export type NpcLook =
   | 'guard'
   | 'albertus'
   | 'thomas'
+  | 'forester'
   // Araucanía (1553)
   | 'lautaro'
   | 'machi'

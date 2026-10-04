@@ -2,7 +2,7 @@
 
 A small third-person stealth adventure about a scientist stranded across time, built with **TypeScript** and **Three.js**.
 
-Dr. Elias Ward of the Chronos Institute in Geneva, Switzerland, was running a routine one-hour test of the time machine. Something went wrong: the year display broke, the machine fell apart, and Elias woke up 66 million years in the past. To get home he has to repair the machine with whatever each era offers, while avoiding everything that wants to eat him, arrest him or throw him out of a castle. Along the way he uncovers what the Institute has been hiding about Test Run #12 and its pilot, Aaron Pike.
+Dr. Andrew Ward of the Chronos Institute in Geneva, Switzerland, was running a routine one-hour test of the time machine. Something went wrong: the year display broke, the machine fell apart, and Andrew woke up 66 million years in the past. To get home he has to repair the machine with whatever each era offers, while avoiding everything that wants to eat him, arrest him or throw him out of a castle. Along the way he uncovers what the Institute has been hiding about Test Run #12 and its pilot, Aaron Pike.
 
 The game aims to be **historically and scientifically accurate** wherever it can. The credits list the real history and science behind each era.
 
@@ -59,13 +59,13 @@ There is no combat. Enemies are moving puzzles:
 ### 1. Late Cretaceous: Hell Creek, 66.5 million years ago (observe and hide)
 
 - Sneak past feathered *Dakotaraptor* packs and a sleeping *T. rex* in a pitch-black cave.
-- Heal **Pip**, a juvenile *Pachycephalosaurus*, who follows you and settles the head-butting debate by smashing boulders.
+- Heal **Pip**, a juvenile *Pachycephalosaurus*, who follows you and settles the head-butting debate by smashing boulders. Once the machine can carry two (after Cologne), come back for him and climb the rocky pass with the shield to find Pike's first cache and his nav module, which opens the next window. From then on Pip travels with you and his skull solves a puzzle in every era.
 - Parts: hardened tree resin (not amber yet!), obsidian, meteoric iron.
 - Locked area: a mountain pass under falling rocks. Come back with a shield.
 
 ### 2. Middle Ages: Cologne, 1248 (use objects)
 
-- Help the villagers: bring firewood to Agnes the baker (for rye bread) and find Jakob's spinning top in the southern woods (for his lucky pebbles and a secret).
+- Help the villagers in the Archbishop's forest south of the village: sneak past the forester, his hound and a sleeping wild boar to fetch firewood for Agnes the baker (for rye bread, which bribes Brutus at the bell-founder's yard) and Jakob's spinning top from the mill (for his lucky pebbles and a secret).
 - Bribe a dog with the bread so the bell-founder can cast a bronze gear, and throw pebbles to lure guards away from their posts.
 - Meet **Albertus Magnus** in his tower lab (answer his riddle about mercury) and his student **Thomas Aquinas**.
 - Escape through the archers' gallery while crossbowmen shoot down from balconies on the upper floor, then climb onto a landing outside the wall and jump down. It's one-way, so the exit can't be used as an entrance.
@@ -73,22 +73,23 @@ There is no combat. Enemies are moving puzzles:
 
 ### 3. Araucanía: near Fort Tucapel, 1553 (cooperate)
 
-- **Lautaro** (Leftraru) gives you a *pifilka* whistle: blow it and his hidden scouts sound the *trutruka* to pull Spanish soldiers away from their posts.
-- Slip into the palisade fort past arquebusiers, a mounted patrol and a Spanish war dog (distract it with *charqui* from Rayen) for gold contacts and a lodestone.
+- **Lautaro** (Leftraru) explains the plan: blow a *pifilka* whistle and his hidden scouts sound the *trutruka* to pull Spanish soldiers away from their posts.
+- Find the children's lost pali so Ayelén gives you her pifilka, then slip into the palisade fort past arquebusiers, a mounted patrol and a Spanish war dog (distract it with the rye bread you brought from Cologne) for a lodestone and the gold, locked in the captain's iron strongbox until Pip's skull cracks it.
 - Find the children's *pali* so they can keep playing palín: Ayelén's brother joins as an extra scout.
 - Bring *maqui* to the **machi** for a wounded warrior and she gives you *foye* (canelo) bark, a Mapuche remedy for scurvy you'll need later.
 
 ### 4. Neo-Tokyo, 2087 (manipulate systems)
 
-- A neon-lit Tokyo night in the June rainy season, with Hachikō's statue, a small Shinto shrine and the Chronos Corp tower.
-- **Yuki**, a hacker who leaked Chronos's files, recognizes you. Recover her cyberdeck from the maglev depot and she rigs your multitool to hack terminals (switching off cameras, drones and bots) and gives you a power cell, which opens the crypt in 1248. Avoid puddles that splash.
-- Steal an optical lattice clock (the fix for the broken year display) and superconducting tape.
+- A neon-lit Tokyo night in the June rainy season: Hachikō's statue, a Shinto shrine with a big torii and ema plaques, Yamanote Line trains rolling along a viaduct, rows of vending machines, a giant virtual-idol hologram over the avenue, and the Chronos Corp tower.
+- **Yuki**, a hacker who leaked Chronos's files, recognizes you. Recover her cyberdeck from the maglev depot (its door code is hidden in plain sight, between the shrine and a talkative commuter) and she rigs your multitool to hack terminals (switching off cameras, drones and bots) and gives you a power cell, which opens the crypt in 1248. Avoid puddles that splash.
+- Steal an optical lattice clock (the fix for the broken year display; Pip has to ram a jammed blast door behind the lab's laser) and superconducting tape.
 
 ### 5. The Long Drought: Madrid, 2240 (combine everything)
 
 - A city emptied by drought: the dry bed of the Manzanares, a ruined Metro entrance, a nomad trader and packs of feral dogs.
 - Inside the Museo Nacional de Ciencias Naturales: the Megatherium (the first fossil skeleton ever mounted, 1788) and Pike's notes about his own journey.
-- Bring Pip to break through, keep your shield up under the collapsing roof, power the doors, cure Pike's scurvy, install the temporal core and **work out the year you left** from clues gathered along the way.
+- Pip is too parched to charge in the heat: go down into the dark, abandoned Metro station, slip past a feral pack and trade the nomad your rye bread from Cologne for water.
+- Break through with Pip, keep your shield up under the collapsing roof, power the doors, cure Pike's scurvy, hack your way into the blacked-out mineral hall for the quartz his core needs (mind the old guide robot), install the temporal core and **work out the year you left** from clues gathered along the way.
 
 ## Project structure
 
@@ -132,7 +133,7 @@ Era files are declarative plus async story scripts, and they only talk to the `W
 ```ts
 w.watcher({ kind: 'guard', route: 'AC', caught: GUARD_CAUGHT });
 w.ally({ marker: 'A', look: 'weichafe', name: 'Scout', talk: scoutLines });
-w.trigger({ area: 'L', block: true, when: (w) => !w.has('shield'), run: (w) => w.say(['Elias', 'Crossbow bolts everywhere!']) });
+w.trigger({ area: 'L', block: true, when: (w) => !w.has('shield'), run: (w) => w.say(['Andrew', 'Crossbow bolts everywhere!']) });
 ```
 
 Since era scripts never touch rendering code, `npm run validate` can run them in Node.
@@ -143,7 +144,7 @@ Everything is generated in code: there are no image, model or audio files. Chara
 
 ### A note on languages
 
-Elias wears a translator earpiece, which explains why the guards in Cologne speak English with a heavy German accent (they're really speaking Middle High German). Spanish soldiers' speech bubbles stay in Spanish, and Mapudungun words (*mari mari*, *peñi*, *chaltu may*, *machi*, *ruka*, *foye*) are used where they fit.
+Andrew wears a translator earpiece, which explains why the guards in Cologne speak English with a heavy German accent (they're really speaking Middle High German). Spanish soldiers' speech bubbles stay in Spanish, and Mapudungun words (*mari mari*, *peñi*, *chaltu may*, *machi*, *ruka*, *foye*) are used where they fit.
 
 ## Dependencies and security
 

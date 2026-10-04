@@ -5,12 +5,13 @@ import { drawText } from '../engine/text.ts';
 import type { Game, Scene } from '../game/game.ts';
 import { DialogueBox, drawPanel, Timers } from '../game/ui.ts';
 import { buildJungleSet, buildLabSet } from '../render/sets.ts';
+import { Speaker } from '../game/speakers.ts';
 
 type Stage = 'black' | 'lab' | 'jungle' | 'title';
 
 /**
  * Opening cinematic: a routine test at the Chronos Institute goes wrong and
- * Elias wakes up somewhere very, very old. Skippable with Escape.
+ * Andrew wakes up somewhere very, very old. Skippable with Escape.
  */
 export class IntroScene implements Scene {
   private readonly game: Game;
@@ -77,7 +78,7 @@ export class IntroScene implements Scene {
 
   private async run(): Promise<void> {
     const audio = this.game.audio;
-    const elias = this.lab.elias.root;
+    const andrew = this.lab.andrew.root;
 
     this.caption = { title: 'CHRONOS INSTITUTE', subtitle: 'Geneva, Switzerland  ·  Temporal Research Division  ·  Test Run #47' };
     this.fade = 0;
@@ -90,28 +91,28 @@ export class IntroScene implements Scene {
     await this.fadeTo(0, 1);
 
     await this.say(
-      ['Nora (radio)', "Morning, Elias. All systems green. Coffee's on me if you come back in one piece."],
-      ['Elias', "It's a one-hour hop, Nora. I'll be back before it gets cold."],
-      ['Nora (radio)', 'Target: this lab, sixty minutes ago. Observe, take readings, come home. Nothing fancy.'],
-      ['Nora (radio)', 'Translator earpiece on? Protocol says you wear it, even for a one-hour hop.'],
-      ['Elias', "On and calibrated. Forty languages, living and dead. As if I'll need any of them."],
+      [Speaker.NoraRadio, "Morning, Andrew. All systems green. Coffee's on me if you come back in one piece."],
+      [Speaker.Andrew, "It's a one-hour hop, Nora. I'll be back before it gets cold."],
+      [Speaker.NoraRadio, 'Target: this lab, sixty minutes ago. Observe, take readings, come home. Nothing fancy.'],
+      [Speaker.NoraRadio, 'Translator earpiece on? Protocol says you wear it, even for a one-hour hop.'],
+      [Speaker.Andrew, "On and calibrated. Forty languages, living and dead. As if I'll need any of them."],
     );
 
-    // Elias walks into the pod.
+    // Andrew walks into the pod.
     this.walking = true;
-    elias.rotation.y = Math.PI / 2;
-    while (elias.position.x < 1.4) {
+    andrew.rotation.y = Math.PI / 2;
+    while (andrew.position.x < 1.4) {
       await this.wait(1 / 60);
-      elias.position.x += 0.035;
-      elias.position.z += (-0.9 - elias.position.z) * 0.05;
+      andrew.position.x += 0.035;
+      andrew.position.z += (-0.9 - andrew.position.z) * 0.05;
     }
     this.walking = false;
-    elias.visible = false;
+    andrew.visible = false;
     this.lab.setMachine('active');
     audio.sfx('select');
     await this.wait(0.6);
 
-    await this.say(['Nora (radio)', 'Stability at 98%. Starting the countdown.'], ['Elias', 'Okay... temporal displacement in 3...']);
+    await this.say([Speaker.NoraRadio, 'Stability at 98%. Starting the countdown.'], [Speaker.Andrew, 'Okay... temporal displacement in 3...']);
     for (const n of ['2', '1']) {
       this.bigText = n;
       audio.sfx('blip');
@@ -130,7 +131,7 @@ export class IntroScene implements Scene {
     audio.sfx('error');
     audio.sfx('alarm');
     await this.wait(1.6);
-    await this.say(['Nora (radio)', 'Elias? These readings are all wrong... Abort! ABORT!']);
+    await this.say([Speaker.NoraRadio, 'Andrew? These readings are all wrong... Abort! ABORT!']);
 
     audio.sfx('boom');
     this.flash = 1;
@@ -143,8 +144,8 @@ export class IntroScene implements Scene {
     await this.wait(1.4);
     this.bigText = '';
 
-    // The jungle. Elias lies on his back next to the smoking machine.
-    const lying = this.jungle.elias.root;
+    // The jungle. Andrew lies on his back next to the smoking machine.
+    const lying = this.jungle.andrew.root;
     lying.rotation.set(-Math.PI / 2, 0, 0.3);
     lying.position.set(-0.8, 0.22, 0.6);
     this.setStage('jungle');
@@ -152,7 +153,7 @@ export class IntroScene implements Scene {
     await this.fadeTo(0, 1.6);
     await this.wait(0.6);
 
-    await this.say(['Elias', 'Ugh... my head...']);
+    await this.say([Speaker.Andrew, 'Ugh... my head...']);
     for (let i = 0; i <= 20; i++) {
       lying.rotation.x = -Math.PI / 2 + (Math.PI / 2) * (i / 20);
       lying.position.y = 0.22 * (1 - i / 20);
@@ -161,7 +162,7 @@ export class IntroScene implements Scene {
     lying.rotation.set(0, 0.4, 0);
     audio.sfx('step');
     await this.wait(0.5);
-    await this.say(['Elias', 'Nora? Nora, do you copy?'], 'Only static answers.', ['Elias', "And these plants... they're enormous."]);
+    await this.say([Speaker.Andrew, 'Nora? Nora, do you copy?'], 'Only static answers.', [Speaker.Andrew, "And these plants... they're enormous."]);
 
     audio.sfx('roar');
     this.shake = 1.2;
@@ -171,9 +172,9 @@ export class IntroScene implements Scene {
     await this.wait(0.8);
     lying.rotation.y = 0.2;
     await this.say(
-      ['Elias', '...'],
-      ['Elias', 'That is definitely not one hour ago.'],
-      ['Elias', "Okay. Don't panic. You built this thing. You can fix it."],
+      [Speaker.Andrew, '...'],
+      [Speaker.Andrew, 'That is definitely not one hour ago.'],
+      [Speaker.Andrew, "Okay. Don't panic. You built this thing. You can fix it."],
     );
 
     this.setStage('title');
@@ -208,14 +209,14 @@ export class IntroScene implements Scene {
     const jitter = (): number => (this.shake ? (Math.random() - 0.5) * this.shake * 0.1 : 0);
     if (this.stage === 'lab') {
       this.lab.update(time, 0);
-      this.lab.elias.animate(time, this.walking ? 1 : 0);
+      this.lab.andrew.animate(time, this.walking ? 1 : 0);
       const push = Math.min(1, this.stageTime / 30);
       this.camera.position.set(0.2 + jitter(), 2.4 + jitter(), 7.2 - push * 1.5);
       this.camera.lookAt(0.2, 1.1, -1);
       screen.render(this.lab.scene, this.camera);
     } else if (this.stage === 'jungle' || this.stage === 'title') {
       this.jungle.update(time, 0);
-      this.jungle.elias.animate(time, 0);
+      this.jungle.andrew.animate(time, 0);
       const drift = this.stageTime * 0.05;
       this.camera.position.set(-0.4 + drift + jitter(), 1.9 + jitter(), 5.4 - drift);
       this.camera.lookAt(0, 0.9, -0.6);

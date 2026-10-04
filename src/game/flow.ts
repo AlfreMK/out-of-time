@@ -6,6 +6,7 @@ import { TravelScene } from '../scenes/travel.ts';
 import type { Game } from './game.ts';
 import { GameState, type EraId } from './state.ts';
 import { World } from './world.ts';
+import { progress } from './flags.ts';
 
 /*
  * Scene transitions live here so scenes don't need to import each other.
@@ -36,16 +37,16 @@ export function continueGame(game: Game): void {
 
 /** Stability shown during a jump, based on how much of the machine is repaired. */
 export function stability(state: GameState): number {
-  if (state.flag('fixed:ruins')) return 100;
-  if (state.flag('fixed:future')) return 90;
-  if (state.flag('fixed:araucania')) return 75;
-  if (state.flag('fixed:medieval')) return 54;
-  if (state.flag('fixed:prehistory')) return 31;
+  if (state.flag(progress.fixed('ruins'))) return 100;
+  if (state.flag(progress.fixed('future'))) return 90;
+  if (state.flag(progress.fixed('araucania'))) return 75;
+  if (state.flag(progress.fixed('medieval'))) return 54;
+  if (state.flag(progress.fixed('prehistory'))) return 31;
   return 12;
 }
 
 export function startTravel(game: Game, from: EraId, to: EraId): void {
-  const known = game.state.flag(`visited:${to}`);
+  const known = game.state.flag(progress.visited(to));
   game.switchTo(new TravelScene(game, from, to, stability(game.state), known, () => game.switchTo(new World(game, ERAS[to]), 0.8)), 0.8);
 }
 

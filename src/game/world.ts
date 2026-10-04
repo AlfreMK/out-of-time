@@ -51,6 +51,7 @@ import { FOODS, ITEMS, TOOLS } from './items.ts';
 import { ERA_IDS, ITEM_IDS, type EraId, type ItemId } from './state.ts';
 import { TILE, TileMap, type TileRect, type TilePoint } from './tilemap.ts';
 import { ChoiceMenu, DialogueBox, drawPanel, speakerColor, Timers, YearPicker } from './ui.ts';
+import { eraFlags, Flag, progress, type FlagName } from './flags.ts';
 
 interface PixelRect {
   x: number;
@@ -203,7 +204,7 @@ export class World implements Scene, WorldApi {
     this.visits++;
     this.updateMusic();
     if (this.visits === 1) {
-      const visitedFlag = `visited:${this.def.id}`;
+      const visitedFlag = progress.visited(this.def.id);
       const firstVisit = !this.flag(visitedFlag);
       this.setFlag(visitedFlag);
       this.save();
@@ -284,7 +285,7 @@ export class World implements Scene, WorldApi {
     if (kind === 'food') return;
     for (const sleeper of this.sleepers) {
       if (sleeper.hear(x, y, radius)) {
-        this.caught(sleeper, sleeper.caughtLines, 'roar');
+        this.caught(sleeper, sleeper.caughtLines, sleeper.sound);
         return;
       }
     }
@@ -460,7 +461,10 @@ export class World implements Scene, WorldApi {
     for (const e of this.entities) {
       if (!e.interactLabel || e.removed || e === this.hero) continue;
       let dist: number;
-      if (e.solid) {
+      if (e instanceof Inspect) {
+        // Signs, panels and statues have no body of their own: the whole tile answers.
+        dist = Math.hypot(Math.max(0, Math.abs(px - e.x) - TILE / 2), Math.max(0, Math.abs(py - (e.y - 4)) - TILE / 2));
+      } else if (e.solid) {
         const cy = e.y + (e.solid.offsetY ?? 0);
         dist = Math.hypot(Math.max(0, Math.abs(px - e.x) - e.solid.hw), Math.max(0, Math.abs(py - cy) - e.solid.hh));
       } else {
@@ -606,18 +610,22 @@ export class World implements Scene, WorldApi {
 
   /** Testing tools, available while god mode is on (type "letmetest"). */
   private async debugMenu(): Promise<void> {
-    const options = ['Give all items', 'Unlock all eras', 'Warp to era...', 'Repair the machine in this era', 'Back'];
+    const options = ['Give all items', 'Unlock all eras', 'Warp to era...', 'Repair the machine in this era', 'Restart this era', 'Back'];
     const pick = await this.choose('DEBUG', options);
     if (pick === 0) {
       for (const item of ITEM_IDS) this.give(item);
       this.toast('All items added');
     } else if (pick === 1) {
       for (const era of ERA_IDS) {
-        this.setFlag(`visited:${era}`);
-        this.setFlag(`diag:${era}`);
-        if (era !== 'ruins') this.setFlag(`fixed:${era}`);
+        this.setFlag(progress.visited(era));
+        this.setFlag(progress.diagnosed(era));
+        if (era !== 'ruins') this.setFlag(progress.fixed(era));
       }
-      this.setFlag('got:notes');
+      this.setFlag(progress.got('notes'));
+      this.setFlag(Flag.EmitterInstalled);
+      this.setFlag(Flag.NavInstalled);
+      this.setFlag(Flag.PipFriend);
+      this.setFlag(Flag.PipAboard);
       this.toast('All eras unlocked');
     } else if (pick === 2) {
       const eras = ERA_IDS.filter((era) => era !== this.def.id);
@@ -627,11 +635,35 @@ export class World implements Scene, WorldApi {
         await this.travel(eras[choice]);
       }
     } else if (pick === 3) {
-      this.setFlag(`diag:${this.def.id}`);
-      this.setFlag(`fixed:${this.def.id}`);
+      this.setFlag(progress.diagnosed(this.def.id));
+      this.setFlag(progress.fixed(this.def.id));
       this.toast('Machine repaired');
+    } else if (pick === 4) {
+      const sure = await this.choose('Restart this era? Its items, flags and dialogue reset.', ['Restart', 'Cancel']);
+      if (sure === 0) {
+        this.restartEra();
+        return;
+      }
     }
     this.save();
+  }
+
+  /** Debug: forgets everything gained in this era and reloads it from the arrival point. */
+  private restartEra(): void {
+    const era = this.def.id;
+    const state = this.game.state;
+    for (const item of ITEM_IDS) {
+      if (ITEMS[item].era !== era) continue;
+      state.take(item);
+      state.setFlag(progress.got(item), false);
+    }
+    for (const flag of eraFlags(era)) state.setFlag(flag, false);
+    state.setFlag(progress.visited(era), false);
+    state.setFlag(progress.diagnosed(era), false);
+    state.setFlag(progress.fixed(era), false);
+    state.checkpoint = null;
+    state.save();
+    this.game.switchTo(new World(this.game, this.def), 0.6);
   }
 
   // ---------------------------------------------------------------------------
@@ -810,8 +842,8 @@ export class World implements Scene, WorldApi {
     const ui = screen.ui;
     const parts = this.def.parts;
     if (parts.length === 0) return;
-    const fixed = this.flag(`fixed:${this.def.id}`);
-    const diagnosed = fixed || this.flag(`diag:${this.def.id}`);
+    const fixed = this.flag(progress.fixed(this.def.id));
+    const diagnosed = fixed || this.flag(progress.diagnosed(this.def.id));
     const w = 104;
     const x0 = VIEW_W - w - 4;
     const h = diagnosed ? 13 + parts.length * 10 : 23;
@@ -863,13 +895,16 @@ export class World implements Scene, WorldApi {
     drawText(ui, 'INVENTORY', 32, 116, { size: 7, bold: true, color: '#f1c232' });
     const items = [...this.game.state.items];
     if (items.length === 0) drawText(ui, '(empty)', 32, 127, { size: 6.5, color: '#55607a' });
+    // Shrink the grid as the bag fills up, so it always fits inside the panel.
+    const cols = items.length > 16 ? 5 : 4;
+    const rows = Math.ceil(items.length / cols);
+    const rowH = Math.min(10, 39 / Math.max(1, rows));
+    const colW = 264 / cols;
     items.forEach((item, i) => {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      const x = 32 + col * 66;
-      const y = 127 + row * 10;
+      const x = 32 + (i % cols) * colW;
+      const y = 127 + Math.floor(i / cols) * rowH;
       ui.drawImage(ITEM_SPRITES[item], x, y);
-      drawText(ui, ITEMS[item].name, x + 11, y + 0.5, { size: 5.5 });
+      drawText(ui, ITEMS[item].name, x + 11, y + 0.5, { size: cols === 4 ? 5.5 : 4.5 });
     });
   }
 
@@ -960,18 +995,18 @@ export class World implements Scene, WorldApi {
 
   give(item: ItemId): void {
     this.game.state.give(item);
-    this.game.state.setFlag(`got:${item}`);
+    this.game.state.setFlag(progress.got(item));
   }
 
   take(item: ItemId): void {
     this.game.state.take(item);
   }
 
-  flag(name: string): boolean {
+  flag(name: FlagName): boolean {
     return this.game.state.flag(name);
   }
 
-  setFlag(name: string, on = true): void {
+  setFlag(name: FlagName, on = true): void {
     this.game.state.setFlag(name, on);
   }
 
@@ -1058,7 +1093,7 @@ export class World implements Scene, WorldApi {
   }
 
   pickup(spec: PickupSpec): void {
-    if (this.flag(`got:${spec.item}`)) return;
+    if (this.flag(progress.got(spec.item))) return;
     const p = this.feet(spec.marker);
     this.entities.push(new Pickup(p.x, p.y, spec.item, spec.lines ?? [], spec.after));
   }
@@ -1075,8 +1110,9 @@ export class World implements Scene, WorldApi {
 
   sleeper(spec: SleeperSpec): void {
     const p = this.map.marker(spec.marker);
-    // The T-Rex spans two tiles to the right of its marker.
-    const sleeper = new Sleeper(p.tx * TILE + TILE, p.ty * TILE + 14, spec.caught);
+    // The T. rex spans two tiles to the right of its marker; a boar fits in one.
+    const x = spec.look === 'boar' ? p.tx * TILE + TILE / 2 : p.tx * TILE + TILE;
+    const sleeper = new Sleeper(x, p.ty * TILE + 14, spec);
     this.sleepers.push(sleeper);
     this.entities.push(sleeper);
   }
@@ -1111,7 +1147,7 @@ export class World implements Scene, WorldApi {
 
   obstacle(spec: ObstacleSpec): ActorHandle {
     const p = this.map.marker(spec.marker);
-    const label = spec.label ?? (spec.look === 'column' ? 'Fallen column' : 'Boulder');
+    const label = spec.label ?? { boulder: 'Boulder', column: 'Fallen column', log: 'Fallen trunk', blastdoor: 'Blast door', chest: 'Strongbox' }[spec.look];
     const obstacle = new Obstacle(p.tx * TILE + TILE / 2, (p.ty + 1) * TILE, spec.look, label, spec.interact);
     this.entities.push(obstacle);
     return this.handle(obstacle);
@@ -1126,6 +1162,12 @@ export class World implements Scene, WorldApi {
   inspect(marker: string, label: string, interact: Script): void {
     const p = this.map.marker(marker);
     this.entities.push(new Inspect(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, label, interact));
+  }
+
+  inspectEach(marker: string, label: string, interact: (w: WorldApi, index: number) => Promise<void> | void): void {
+    this.map.markerAll(marker).forEach((p, index) => {
+      this.entities.push(new Inspect(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, label, (w) => interact(w, index)));
+    });
   }
 
   checkpoint(marker: string): void {
@@ -1157,6 +1199,16 @@ export class World implements Scene, WorldApi {
     this.entities.push(new Decor(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2, kind));
   }
 
+  decorEach(marker: string, kinds: Array<DecorKind | null>): Array<ActorHandle | null> {
+    return this.map.markerAll(marker).map((p, i) => {
+      const kind = kinds[i];
+      if (!kind) return null;
+      const decor = new Decor(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2, kind);
+      this.entities.push(decor);
+      return this.handle(decor);
+    });
+  }
+
   ally(spec: AllySpec): ActorHandle {
     const p = this.feet(spec.marker);
     const ally = new Ally(p.x, p.y, spec.look, spec.name, spec.talk);
@@ -1166,6 +1218,10 @@ export class World implements Scene, WorldApi {
   }
 
   // WorldApi: systems
+
+  alarm(radius: number): void {
+    this.noise(this.hero.x, this.hero.y, radius, 'noise');
+  }
 
   disable(group: string, seconds: number): void {
     for (const watcher of this.watchers) {

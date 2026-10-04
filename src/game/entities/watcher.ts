@@ -39,12 +39,15 @@ const TUNING: Record<WatcherKind, KindTuning> = {
   bot: { speed: 30, range: 82, fov: 1.0, wait: 2.0, sweep: 0.5, alertness: 1.1, hearing: 1, height: 20 },
 };
 
-/** Default speech bubbles. Guards speak through Elias's translator earpiece, hence the accent. */
+/**
+ * Default speech bubbles. Like the Spanish soldiers in Araucanía, Cologne's guards shout in German:
+ * the earpiece only translates real conversations.
+ */
 const BARKS: Partial<Record<WatcherKind, { suspicious: string[]; investigate: string[]; giveUp: string[] }>> = {
   guard: {
-    suspicious: ['Hm? Who goes zere?', 'Was ist das?', 'Did somesing move?'],
-    investigate: ['I vill take a look.', 'Show yourself!', 'Who is making zis noise?'],
-    giveUp: ['Ach, nur der Wind.', 'Bah. Ze cat again.', 'Nozing. Back to my post.'],
+    suspicious: ['Hm? Wer da?', 'Was war das?', 'Hat sich da was bewegt?'],
+    investigate: ['Ich seh mal nach.', 'Zeig dich!', 'Wer macht da Lärm?'],
+    giveUp: ['Ach, nur der Wind.', 'Bah. Wieder die Katze.', 'Nichts. Zurück auf meinen Posten.'],
   },
   soldier: {
     suspicious: ['¿Quién anda ahí?', '¿Qué fue eso?', '¿Hay alguien?'],
@@ -95,6 +98,8 @@ export class Watcher extends Entity {
   walking = false;
   /** Seconds left of being switched off (hacked cameras and robots). */
   disabledTime = 0;
+  /** A dormant watcher sleeping at its post (see `WatcherSpec.dormant`). */
+  asleep = false;
   /** Current speech bubble. */
   bark: { text: string; time: number } | null = null;
   readonly range: number;
@@ -143,6 +148,7 @@ export class Watcher extends Entity {
     this.bark = null;
     this.angle = this.route.length > 1 ? this.angleToward(this.route[1]) : this.postAngle;
     this.lookCenter = this.angle;
+    this.asleep = this.spec.dormant === true;
   }
 
   get isStationary(): boolean {
@@ -153,9 +159,9 @@ export class Watcher extends Entity {
     return this.disabledTime > 0;
   }
 
-  /** Vision is off while eating or switched off. */
+  /** Vision is off while eating, switched off or asleep. */
   get watching(): boolean {
-    return this.state !== 'eat' && !this.disabled;
+    return this.state !== 'eat' && !this.disabled && !this.asleep;
   }
 
   /** Eating and standing still (the food is reached). */
@@ -172,6 +178,12 @@ export class Watcher extends Entity {
     }
     if (world.controlsLocked) return;
     this.barkCooldown = Math.max(0, this.barkCooldown - dt);
+    if (this.asleep) {
+      this.suspicion = 0;
+      if (Math.floor(this.animTime / 2.4) !== Math.floor((this.animTime + dt) / 2.4)) this.emote('zzz', 1.4);
+      this.animTime += dt;
+      return;
+    }
     if (this.disabledTime > 0) {
       this.disabledTime -= dt;
       this.suspicion = 0;
@@ -236,7 +248,11 @@ export class Watcher extends Entity {
           this.timer = 0;
           this.lookCenter = this.angle;
           if (this.state === 'investigate') this.state = 'look';
-          else this.state = 'pause';
+          else {
+            // A dormant watcher back at its post powers down again.
+            if (this.state === 'return' && this.spec.dormant) this.asleep = true;
+            this.state = 'pause';
+          }
         }
         break;
       case 'look':
@@ -273,6 +289,12 @@ export class Watcher extends Entity {
   hear(x: number, y: number, radius: number, kind: 'step' | 'noise' | 'food', world: World, food?: Food): void {
     if (this.state === 'eat' || this.disabled || this.tuning.hearing === 0) return;
     if (Math.hypot(this.x - x, this.y - y) > radius * this.tuning.hearing) return;
+    if (this.asleep) {
+      // Footsteps don't wake it; crunching glass or an alarm does.
+      if (kind !== 'noise') return;
+      this.asleep = false;
+      this.emote('alert', 1);
+    }
     if (kind === 'food') {
       if (this.kind !== 'dog' || !food) return;
       this.food = food;
