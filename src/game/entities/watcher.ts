@@ -7,14 +7,14 @@ import { Entity } from './entity.ts';
 
 type State = 'pause' | 'patrol' | 'investigate' | 'look' | 'return' | 'eat';
 
-const FACING_ANGLE: Record<Facing, number> = {
+export const FACING_ANGLE: Record<Facing, number> = {
   right: 0,
   down: Math.PI / 2,
   left: Math.PI,
   up: -Math.PI / 2,
 };
 
-interface KindTuning {
+export interface KindTuning {
   speed: number;
   range: number;
   fov: number;
@@ -27,9 +27,12 @@ interface KindTuning {
   height: number;
 }
 
-const TUNING: Record<WatcherKind, KindTuning> = {
+/** Per-kind defaults (also read by the map validator). */
+export const TUNING: Record<WatcherKind, KindTuning> = {
   // Dakotaraptor: fast, sharp-eyed pack hunter with good hearing.
   raptor: { speed: 52, range: 100, fov: 1.35, wait: 1.0, sweep: 0.8, alertness: 1.5, hearing: 1.4, height: 22 },
+  // Anzu brooding its nest: watchful, but it barely turns its head and only leaves the eggs for a real commotion.
+  anzu: { speed: 46, range: 84, fov: 1.3, wait: 0, sweep: 0.35, alertness: 1.4, hearing: 1.2, height: 26 },
   guard: { speed: 32, range: 76, fov: 1.2, wait: 2.0, sweep: 0.6, alertness: 1, hearing: 1, height: 19 },
   soldier: { speed: 34, range: 84, fov: 1.2, wait: 2.0, sweep: 0.6, alertness: 1.1, hearing: 1, height: 19 },
   rider: { speed: 66, range: 92, fov: 1.1, wait: 1.2, sweep: 0.5, alertness: 1.2, hearing: 0.9, height: 30 },
@@ -80,7 +83,7 @@ const BARKS: Partial<Record<WatcherKind, Partial<Barks>>> = {
 /** Seconds spent looking around where a noise came from. */
 const SEARCH_TIME = 2.6;
 /**
- * A war horn means an attack: they search much longer, and keep their eyes on the woods it came from
+ * A war horn (or any big commotion) means trouble: they search much longer, and keep their eyes on the woods it came from
  * (narrow sweep, facing away from their post), which gives the player time to slip in behind them.
  */
 const HORN_SEARCH_TIME = 8;
@@ -98,7 +101,10 @@ const AVOID_COST = 3;
 const POINT_BLANK = 18;
 const TOUCH = 11;
 
-/** Footsteps, a small noise (a pebble, glass, a puddle, an alarm), a war horn (the scouts' trutruka), or food landing. */
+/**
+ * Footsteps, a small noise (a pebble, glass, a puddle, an alarm), a war horn (the scouts' trutruka, or a flock of
+ * birds bursting out of cover: anything loud enough to pull a posted watcher away), or food landing.
+ */
 export type NoiseKind = 'step' | 'noise' | 'horn' | 'food';
 
 /** Anything that hears food lands near it and eats it (bread for the dog). */
@@ -217,6 +223,11 @@ export class Watcher extends Entity {
   /** Field of view right now: narrower while chatting distracted. */
   get viewFov(): number {
     return this.fov * (1 - (1 - CHAT_FOV) * this.chatBlend);
+  }
+
+  /** Standing still at a route stop (or its post), not looking into anything: a brooding Anzu settles on its nest. */
+  get idle(): boolean {
+    return this.state === 'pause' && this.path.length === 0;
   }
 
   get isStationary(): boolean {

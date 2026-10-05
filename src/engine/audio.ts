@@ -32,7 +32,10 @@ export type SfxName =
   | 'chime'
   | 'jingle'
   | 'trainhorn'
-  | 'clack';
+  | 'clack'
+  | 'flutter'
+  | 'hiss'
+  | 'honk';
 
 /** One music theme per environment; worlds switch between them as you walk around. */
 export type MusicTheme =
@@ -53,7 +56,7 @@ export type MusicTheme =
   | 'ending';
 
 type Ambience = 'wind' | 'rain' | 'jungle' | 'hum' | 'fire';
-type Sparkle = 'birds' | 'drips' | 'insects' | 'condor';
+type Sparkle = 'birds' | 'drips' | 'insects' | 'condor' | 'frogs';
 
 interface Voice {
   /** MIDI notes, 0 = rest, one per step (eighth notes). */
@@ -80,7 +83,8 @@ interface Pattern {
   /** Low tom, e.g. the Mapuche kultrun. */
   tom?: string;
   ambience?: Ambience[];
-  sparkle?: Sparkle;
+  /** Little background sounds now and then; with several, each one picks at random. */
+  sparkle?: Sparkle | Sparkle[];
 }
 
 const r = (n: number): number[] => Array<number>(n).fill(0);
@@ -96,7 +100,7 @@ const PATTERNS: Record<Exclude<MusicTheme, 'none'>, Pattern> = {
     ],
     hat: '..o...o...o...o.',
   },
-  // Open Cretaceous floodplain: hollow wooden plucks, hand drums and birds.
+  // Open Cretaceous floodplain: hollow wooden plucks, hand drums, birds, katydids and frogs by the river.
   jungle: {
     bpm: 88,
     voices: [
@@ -107,7 +111,7 @@ const PATTERNS: Record<Exclude<MusicTheme, 'none'>, Pattern> = {
     tom: 'x.......x...x...x.......x.x.....',
     hat: '..o...o...o...o...o...o...o...o.',
     ambience: ['jungle'],
-    sparkle: 'birds',
+    sparkle: ['birds', 'birds', 'insects', 'frogs'],
   },
   // Deep forest where the raptors hunt: a nervous low ostinato.
   forest: {
@@ -507,6 +511,23 @@ export class AudioEngine {
         this.tone(t + 0.5, 523, 0.7, 'sawtooth', 0.025, 494);
         this.tone(t + 0.5, 659, 0.7, 'square', 0.015, 622);
         break;
+      case 'flutter':
+        // A flock taking off: a flurry of wingbeats and alarm calls.
+        for (let i = 0; i < 9; i++) this.noise(t + i * 0.045, 0.04, 0.09, 2200 - i * 80, 900);
+        [2600, 3100, 2400, 2900].forEach((f, i) => this.tone(t + 0.05 + i * 0.09, f, 0.06, 'sine', 0.04, f * 1.25));
+        break;
+      case 'hiss':
+        // A big feathered dinosaur rearing up: a breathy hiss over a low rumble.
+        this.noise(t, 0.7, 0.16, 5200, 2600);
+        this.tone(t, 120, 0.6, 'sawtooth', 0.05, 80);
+        break;
+      case 'honk':
+        // A startled plant-eater: a breathy snort, then a low closed-mouth hoot (like a pigeon's coo
+        // or a crocodile's rumble, the way many dinosaurs may have called).
+        this.noise(t, 0.16, 0.07, 900, 250);
+        this.tone(t + 0.08, 190, 0.22, 'sine', 0.06, 140);
+        this.tone(t + 0.08, 380, 0.12, 'sine', 0.012, 290);
+        break;
       case 'clack':
         // Wheels over a rail joint: "gatan-goton".
         this.noise(t, 0.08, 0.12, 1400, 400);
@@ -607,6 +628,10 @@ export class AudioEngine {
       this.tone(t, f, 0.12, 'sine', 0.03, f * 0.6, bus);
     } else if (kind === 'insects') {
       for (let i = 0; i < 6; i++) this.tone(t + i * 0.04, 4200, 0.02, 'square', 0.006, undefined, bus);
+    } else if (kind === 'frogs') {
+      // A frog croaking by the water: two low, throaty pulses.
+      this.tone(t, 240, 0.09, 'square', 0.012, 170, bus);
+      this.tone(t + 0.13, 250, 0.11, 'square', 0.012, 165, bus);
     } else {
       this.tone(t, 900, 0.9, 'sine', 0.012, 700, bus);
     }
@@ -644,7 +669,8 @@ export class AudioEngine {
         const hit = line?.[this.step % line.length];
         if (hit === 'x' || hit === 'o') this.drum(t, kind, hit === 'o');
       }
-      if (pattern.sparkle && Math.random() < 0.07) this.sparkle(t, pattern.sparkle);
+      const sparkle = pattern.sparkle;
+      if (sparkle && Math.random() < 0.07) this.sparkle(t, Array.isArray(sparkle) ? sparkle[Math.floor(Math.random() * sparkle.length)] : sparkle);
       this.step++;
       this.nextNoteTime += stepDur;
     }

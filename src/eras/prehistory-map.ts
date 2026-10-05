@@ -4,10 +4,12 @@
  *
  * Zones connect through narrow passages, each crossed by a raptor patrol:
  * the west gorge leads to the T. rex cave, the east corridor to Pip's valley.
+ * South of the river, the meadow has no predators: an Anzu broods on its nest
+ * in a fern-walled clearing (with the medicinal fern), and birds peck nearby.
  *
  * Legend:  # cliff   t conifer   f tree fern   . ground cover   , fern and horsetail undergrowth (hides you)
  *          : dirt    ~ river     o stepping stones   s sand   c cave floor (dark)
- *          b bones (noisy)       r rubble   x crater   ^ mountain gravel
+ *          b bones (noisy)       r rubble   x crater   ^ mountain gravel   k mud with three-toed tracks
  */
 export const PREHISTORY_MAP = [
   '################################################################',
@@ -46,9 +48,9 @@ export const PREHISTORY_MAP = [
   '################......F,...T.,.::..,...........,....,tt......,.t',
   '############################...:Y......,.........L..tt.....,...t',
   '############################sssssssssssssssssIssssssssssssssssss',
-  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~oo~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
   'ssssssssssssssssssssssssssssssssWsssssssssssssssssssssssssssssss',
   't.t.tt.tt...tt..tttt........:.:::.:::::.....tt..t.t.ttt.tt.....t',
   't.....tt.t...t.t.t.tt.....::..:::.::..:.......tt..tttt..t.tt..tt',
@@ -56,19 +58,19 @@ export const PREHISTORY_MAP = [
   't.....tt.t..ttt.t.........:..::::::.:::..........t.......tt..t.t',
   't..t.tt..tt....tt.t..t....:...::S::.:.:........ttt.tttt..tttt.tt',
   'ttt.t...t.ttt..tt..ttt.....:::::::.::::.....t...tt...tt....t..tt',
-  'tt........tt....t.t.......::::.::..::::.....t...t...tttttt.....t',
-  'ttttttt..ttt..t...tt......::.:.::::::.......t...tt.tt..tt.t....t',
-  't.t..t.....tU...,.,,....f.,....::.,,,,.............,U....t..tt.t',
-  't...t...tt..,...,,..........,,.::..f...f,.8.,...,....ttttt...t.t',
-  'tt.tt.tt.tt...............,..,.::...,.f....,..,.,...f..t.t...ttt',
-  'tt......t..t....,,........,....::......,.....,.....,.tt.t....t.t',
-  't...t......t.6......................................7..tt..t.t.t',
-  't.t.......t.,..,.........,,.....,.....,,.............tt..t.....t',
-  't..tt..tttt...,...,...,.f.,...,..f.......,.......f..,t.t.t....tt',
-  'ttt.t....t.t.......f....,......,,,.....f...f.....,.f..t.t.t..t.t',
-  't.tt.tt............,,..,...,.,.,4,.......,..,,......,ttttt.....t',
-  'ttt.t...tt.t..,.,....,...f....,,,,..f..............,..tt.t.t..tt',
-  't.....ttt.tt..,..,................,....,..9...,....,......t....t',
+  'tt........ttU...t.t.......::::.::..::::.....t...t..Utttttt.....t',
+  'ttttttt..ttt..t...tt......::.:.:::k::.......t...tt.tt..tt.t....t',
+  't.t..t.....t....,.,,....f.,....::.,kk,.............,.....t..tt.t',
+  't...t...tt..,...,,..........,,.::..f.8kf,...,...,....ttttt...t.t',
+  'tt.tt.tt.tt...............,..,.::..,...k.,....,..f.....t.t...ttt',
+  'tt......t..t....,,........,....::.......kkkk..,,..,,ftt.t....t.t',
+  't...t......t..........................t.ftf.k.ft.f.....tt..t.t.t',
+  't.t.......t.,..,.........,,.....,....tt.tftfktfttf..,tt..t.....t',
+  't..tt..tttt...,...,...,.f.,...,..f,,..,,tt..k..ft..,.t.t.t....tt',
+  'ttt.t....t.t.f.....f....,......,,,...6,,t...k...tt..,.t.t.t..t.t',
+  't.tt.tt............,,..,...,.,.,.,...,,ft...7...ft,,.ttttt.....t',
+  'ttt.t...tt.t..,.,....,...f....,,,,,..,,tf......4.t.,..tt.t.t..tt',
+  't.....ttt.tt..,..,.................,..,.tt......tf........t....t',
   'tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt',
 ];
 
@@ -76,12 +78,11 @@ export const PREHISTORY_MARKER_BASE: Record<string, string> = {
   '1': '.',
   '2': 'c',
   '3': 'x',
-  '4': ',',
+  '4': '.',
   '5': '.',
   '6': '.',
   '7': '.',
-  '8': '.',
-  '9': '.',
+  '8': 'k',
   A: '.',
   B: '.',
   C: '.',

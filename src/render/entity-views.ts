@@ -8,23 +8,30 @@ import {
   Arrow,
   Bait,
   Companion,
+  Critter,
   Decor,
   FallingRock,
+  Flock,
+  FLOCK_AWAY,
+  FLOCK_RETURN,
   Gate,
   Machine,
   Npc,
   Obstacle,
   Pickup,
+  Sign,
   Sleeper,
   Thrown,
 } from '../game/entities/props.ts';
 import { Watcher } from '../game/entities/watcher.ts';
 import type { World } from '../game/world.ts';
-import { buildDog, buildPip, buildRaptor, buildRider, buildSleepingBoar, buildSleepingRex } from './creatures.ts';
+import { buildAnzu, buildBird, buildDog, buildPip, buildRaptor, buildRider, buildSleepingBoar, buildSleepingRex, buildThescelosaurus } from './creatures.ts';
 import { buildHuman } from './humans.ts';
 import { buildBot, buildCamera, buildDrone, buildMachine } from './machines.ts';
 import { ENEMY_SILHOUETTE, SILHOUETTE } from './materials.ts';
 import { box, cylinder } from './primitives.ts';
+import { buildSign } from './signs.ts';
+import { INTERIOR_LOOKS } from './terrain.ts';
 import { buildBackShield, buildBlastDoor, buildBoulder, buildChest, buildColumn, buildDecor, buildGate, buildItem, buildLog } from './props3d.ts';
 import type { ObstacleLook } from '../eras/types.ts';
 
@@ -69,6 +76,9 @@ export function createView(entity: Entity, world: World): EntityView | null {
   if (entity instanceof Arrow) return arrowView(entity);
   if (entity instanceof Gate) return gateView(entity, world);
   if (entity instanceof Decor) return decorView(entity, world);
+  if (entity instanceof Flock) return flockView(entity);
+  if (entity instanceof Critter) return critterView(entity);
+  if (entity instanceof Sign) return signView(entity, world);
   return null;
 }
 
@@ -172,6 +182,21 @@ function watcherView(watcher: Watcher): EntityView {
           place(rig.root, watcher);
           turn(turning, yaw(), dt);
           rig.update(time, watcher.walking ? 1 : 0, watcher.disabled || watcher.asleep);
+        },
+      };
+    }
+    case 'anzu': {
+      const rig = buildAnzu();
+      rig.root.scale.setScalar(1.15);
+      addSilhouette(rig.root, ENEMY_SILHOUETTE);
+      return {
+        object: rig.root,
+        update(time, dt) {
+          place(rig.root, watcher);
+          turn(rig.root, yaw(), dt);
+          // Brooding: it settles on the eggs whenever it is back on its nest and nothing is going on.
+          rig.setSitting(watcher.idle && watcher.suspicion === 0);
+          rig.animate(time, watcher.walking ? 1 : 0);
         },
       };
     }
@@ -402,6 +427,80 @@ function decorView(decor: Decor, world: World): EntityView {
     update(time) {
       place(rig.root, decor, lift);
       rig.update(time);
+    },
+  };
+}
+
+const BIRD_COLORS = ['#a8784a', '#6a5a4a', '#c89a5a', '#8a7a68', '#b88a52'];
+
+/** Birds pecking around their spot; startled, they fly up and away, and glide back in before landing. */
+function flockView(flock: Flock): EntityView {
+  const root = new THREE.Group();
+  const birds = BIRD_COLORS.map((color, i) => {
+    const rig = buildBird(color);
+    rig.root.scale.setScalar(1.8);
+    const a = (i / BIRD_COLORS.length) * Math.PI * 2 + i;
+    const home = new THREE.Vector3(Math.cos(a) * 0.38, 0, Math.sin(a) * 0.3);
+    rig.root.position.copy(home);
+    rig.root.rotation.y = a * 3;
+    root.add(rig.root);
+    return { rig, home, spread: (i - 2) * 0.35, seed: i * 1.7 };
+  });
+  return {
+    object: root,
+    update(time) {
+      place(root, flock);
+      // Away from where Andrew came from.
+      const away = Math.atan2(flock.y - flock.fledFrom.y, flock.x - flock.fledFrom.x);
+      const flown = flock.away > 0 ? FLOCK_AWAY - flock.away : 0;
+      const returning = flock.away > 0 && flock.away < FLOCK_RETURN;
+      for (const bird of birds) {
+        const { rig, home } = bird;
+        if (flock.away === 0) {
+          rig.root.visible = true;
+          rig.root.position.copy(home);
+          rig.root.position.x += Math.sin(time * 0.5 + bird.seed) * 0.05;
+          rig.root.rotation.y = Math.sin(time * 0.3 + bird.seed) * 2;
+          rig.animate(time + bird.seed, 0);
+          continue;
+        }
+        // Up and away for a couple of seconds, gone while away, then swooping back down.
+        const t = returning ? flock.away / FLOCK_RETURN : Math.min(1, flown / 2.2);
+        rig.root.visible = returning || flown < 2.2;
+        const dir = away + bird.spread;
+        const dist = t * 7;
+        rig.root.position.set(home.x + Math.cos(dir) * dist, t * 4.5, home.z + Math.sin(dir) * dist);
+        rig.root.rotation.y = Math.atan2(Math.cos(dir), Math.sin(dir)) + (returning ? Math.PI : 0);
+        rig.animate(time + bird.seed, 1);
+      }
+    },
+  };
+}
+
+function critterView(critter: Critter): EntityView {
+  const rig = buildThescelosaurus();
+  rig.root.scale.setScalar(1.5);
+  return {
+    object: rig.root,
+    update(time, dt) {
+      place(rig.root, critter);
+      turn(rig.root, yawFor(Math.cos(critter.angle), Math.sin(critter.angle)), dt, critter.fleeing ? 14 : 5);
+      rig.setGrazing(!critter.walking);
+      rig.animate(time * (critter.fleeing ? 1.4 : 1), critter.walking ? (critter.fleeing ? 1 : 0.4) : 0);
+    },
+  };
+}
+
+function signView(sign: Sign, world: World): EntityView {
+  const rig = buildSign(sign.spec, (sign.x / PX) * 1.7 + sign.spec.y);
+  rig.root.position.set(sign.x / PX, 0, sign.y / PX);
+  return {
+    object: rig.root,
+    update(time) {
+      // A sign on a wall that drops away while Andrew is inside would hang in midair over him.
+      const indoors = INTERIOR_LOOKS.has(world.map.defAt(world.hero.x, world.hero.y).look);
+      rig.root.visible = !(sign.spec.hideIndoors && indoors);
+      if (rig.root.visible) rig.update(time);
     },
   };
 }

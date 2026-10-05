@@ -11,6 +11,10 @@
 import { ERAS } from '../src/eras/index.ts';
 import type { ActorHandle, ChatSpec, CompanionHandle, EraDef, GateHandle, Route, RoutePoint, WorldApi } from '../src/eras/types.ts';
 import { FACING_VECTORS, TileMap, type TilePoint, type TileRect } from '../src/game/tilemap.ts';
+import { FACING_ANGLE, TUNING } from '../src/game/entities/watcher.ts';
+import { FLOCK_NOISE } from '../src/game/entities/props.ts';
+import { Flag } from '../src/game/flags.ts';
+import type { SignSpec, WatcherSpec } from '../src/eras/types.ts';
 
 const errors: string[] = [];
 const fail = (era: string, message: string): void => {
@@ -26,16 +30,20 @@ interface Recorded {
   points: Array<{ marker: RoutePoint; what: string; mustWalk: boolean }>;
   /** Markers of characters that physically block their tile (people, the machine, the T. rex). */
   solids: RoutePoint[];
-  areas: Array<{ area: string | TileRect; what: string }>;
-  routes: Array<{ route: Route; name: string; kind: string; posted: boolean; id?: string; group?: string }>;
+  areas: Array<{ area: string | TileRect; what: string; once?: string }>;
+  routes: Array<{ route: Route; name: string; kind: string; posted: boolean; id?: string; group?: string; spec: WatcherSpec }>;
   chats: ChatSpec[];
   gates: string[];
   /** Hidden allies present from the start (not ones spawned later by a flag). */
   allies: string[];
+  /** Flocks of birds, whose racket pulls even posted watchers away. */
+  flocks: RoutePoint[];
+  /** Advertising signs (on buildings or rooftops, so they only need to be on the map). */
+  signs: SignSpec[];
 }
 
 function record(def: EraDef): Recorded {
-  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [], allies: [], chats: [] };
+  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [], allies: [], chats: [], flocks: [], signs: [] };
   const point = (marker: RoutePoint, what: string, mustWalk = true): void => {
     rec.points.push({ marker, what, mustWalk });
   };
@@ -59,11 +67,11 @@ function record(def: EraDef): Recorded {
     fadeIn: async () => {},
     machineGlitch: noop,
     watcher: (spec) =>
-      rec.routes.push({ route: spec.route, name: routeName(spec.route), kind: spec.kind, posted: spec.posted === true, id: spec.id, group: spec.group }),
+      rec.routes.push({ route: spec.route, name: routeName(spec.route), kind: spec.kind, posted: spec.posted === true, id: spec.id, group: spec.group, spec }),
     chat: (spec) => rec.chats.push(spec),
     npc: (spec) => (point(spec.marker, `npc ${spec.name}`), rec.solids.push(spec.marker), handle),
     pickup: (spec) => point(spec.marker, `pickup ${spec.item}`),
-    trigger: (spec) => rec.areas.push({ area: spec.area, what: 'trigger' }),
+    trigger: (spec) => rec.areas.push({ area: spec.area, what: 'trigger', once: spec.once }),
     hazard: (spec) => rec.areas.push({ area: spec.area, what: `hazard ${spec.kind}` }),
     sleeper: (spec) => (point(spec.marker, 'sleeper'), rec.solids.push(spec.marker)),
     companion: (spec) => (point(spec.marker, `companion ${spec.name}`), companionHandle),
@@ -76,6 +84,9 @@ function record(def: EraDef): Recorded {
     decor: (marker) => point(marker, 'decor', false),
     decorEach: (marker) => (point(marker, 'decor', false), []),
     ally: (spec) => (point(spec.marker, `ally ${spec.name}`), rec.allies.push(spec.marker), handle),
+    flock: (spec) => (point(spec.at, 'flock'), rec.flocks.push(spec.at)),
+    critter: (spec) => point(spec.at, `critter ${spec.kind}`),
+    sign: (spec) => rec.signs.push(spec),
     disable: noop,
     alarm: noop,
     enterYear: async () => 0,
@@ -164,6 +175,12 @@ function validate(def: EraDef): void {
     const spots = [p, { tx: p.tx, ty: p.ty + 1 }, { tx: p.tx, ty: p.ty - 1 }, { tx: p.tx + 1, ty: p.ty }, { tx: p.tx - 1, ty: p.ty }];
     if (!spots.some((s) => walkable(s.tx, s.ty) && reachable(map, start, s, pastGates))) fail(def.id, `${what} at ${p.tx},${p.ty} is unreachable`);
   }
+  for (const sign of rec.signs) {
+    const p = map.routeTiles([sign.at])[0];
+    if (!p || p.tx < 0 || p.ty < 0 || p.tx + Math.ceil(sign.width) > map.width || p.ty >= map.height) fail(def.id, `sign "${sign.ads.join(', ')}" is off the map`);
+    else if (!map.isSolid(p.tx, p.ty)) fail(def.id, `sign "${sign.ads.join(', ')}" at ${p.tx},${p.ty} isn't on a building`);
+    if (sign.ads.length === 0) fail(def.id, 'a sign has no ads');
+  }
   for (const { area, what } of rec.areas) {
     if (typeof area === 'string') {
       if (!map.hasMarker(area)) fail(def.id, `${what}: area marker "${area}" missing`);
@@ -241,6 +258,47 @@ function validate(def: EraDef): void {
     for (const key of lanes) {
       const [x, y] = key.split(',').map(Number);
       if (Math.hypot(x - pip.tx, y - pip.ty) < 8) fail(def.id, `a raptor lane passes too close to Pip (${x},${y})`);
+    }
+    // The south meadow's Anzu broods by the medicinal fern: getting to it means crossing the tiles it
+    // always watches (whichever way its head sweeps), unless the birds' racket has pulled it away...
+    const anzu = rec.routes.find((r) => r.kind === 'anzu');
+    const flock = rec.flocks[0] ? map.routeTiles([rec.flocks[0]])[0] : null;
+    if (!anzu || !flock) fail(def.id, 'the south meadow needs an Anzu and a flock of birds');
+    else {
+      const post = map.routeTiles(anzu.route)[0]!;
+      const tuning = TUNING.anzu;
+      const range = anzu.spec.range ?? tuning.range;
+      const fov = anzu.spec.fov ?? tuning.fov;
+      const sweep = anzu.spec.sweep ?? tuning.sweep;
+      const facing = FACING_ANGLE[anzu.spec.facing ?? 'down'];
+      const eye = { x: post.tx * 16 + 8, y: post.ty * 16 + 8 };
+      /** Tiles in view with the head turned as far as `slack` allows (negative: in view whichever way it turns). */
+      const inView = (slack: number): Blocked => (tx, ty) => {
+        const x = tx * 16 + 8;
+        const y = ty * 16 + 8;
+        const dist = Math.hypot(x - eye.x, y - eye.y);
+        if (dist > range || (map.def(tx, ty).hide && dist > 18)) return false;
+        const off = Math.abs(Math.atan2(Math.sin(Math.atan2(y - eye.y, x - eye.x) - facing), Math.cos(Math.atan2(y - eye.y, x - eye.x) - facing)));
+        return off <= fov / 2 + slack && map.lineOfSight(eye.x, eye.y, x, y);
+      };
+      const always = inView(-sweep);
+      const ever = inView(sweep);
+      const fern = at('4');
+      const spots = [fern, { tx: fern.tx + 1, ty: fern.ty }, { tx: fern.tx - 1, ty: fern.ty }, { tx: fern.tx, ty: fern.ty + 1 }, { tx: fern.tx, ty: fern.ty - 1 }];
+      if (spots.some((p) => walkable(p.tx, p.ty) && !always(p.tx, p.ty) && reachable(map, start, p, always))) fail(def.id, "the medicinal fern is reachable without passing in front of the Anzu");
+      // ...which they can set off without ever being seen, and close enough for the Anzu to hear it.
+      if (!reachable(map, start, flock, ever)) fail(def.id, 'the birds can only be reached in view of the Anzu');
+      if (Math.hypot(flock.tx - post.tx, flock.ty - post.ty) * 16 > FLOCK_NOISE * tuning.hearing) fail(def.id, 'the birds are too far from the Anzu for their racket to reach it');
+      if (Math.hypot(flock.tx - post.tx, flock.ty - post.ty) * 16 <= 36 * tuning.hearing + 16) fail(def.id, "the birds are so close to the Anzu that it hears Andrew's footsteps there");
+      // The nest hint plays before the player gets near the nest or the birds, from any direction.
+      const hints = rec.areas.filter((a) => a.once === Flag.PreNestHint).map((a) => (typeof a.area === 'string' ? map.markerArea(a.area) : a.area));
+      const pastHint: Blocked = (tx, ty) => hints.some((r) => inRect(r, tx, ty));
+      for (const [what, p] of [['the nest', post], ['the birds', flock]] as const) {
+        if (reachable(map, start, p, pastHint)) fail(def.id, `${what} can be reached without the nest hint playing`);
+      }
+      for (const r of hints) {
+        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (ever(x, y)) fail(def.id, `the nest hint at ${x},${y} plays in view of the Anzu`);
+      }
     }
     const pass = map.markerArea('J');
     if (reachable(map, start, at('5'), (tx, ty) => inRect(pass, tx, ty))) fail(def.id, 'the summit is reachable without crossing the mountain pass');
@@ -340,12 +398,16 @@ function validate(def: EraDef): void {
     if (reachable(map, start, at('Y'), (tx, ty) => pack.has(`${tx},${ty}`))) fail(def.id, "the nomad is reachable without crossing the dogs' beat");
   }
 
-  // A posted sentry only leaves for a war horn: some ally's horn (150 px) has to reach it, or it never moves.
-  for (const { route, name, posted } of rec.routes) {
+  // A posted sentry only leaves for a war horn (150 px) or a flock taking off: one has to reach it, or it never moves.
+  for (const { route, name, posted, spec } of rec.routes) {
     const post = routeTiles.get(route)?.[0];
     if (!posted || !post) continue;
-    const heard = rec.allies.some((a) => map.hasMarker(a) && Math.hypot(map.marker(a).tx - post.tx, map.marker(a).ty - post.ty) * 16 <= 150);
-    if (!heard) fail(def.id, `the sentry posted at "${name}" is out of reach of every ally's horn, so nothing can move it`);
+    const near = (marker: RoutePoint, reach: number): boolean => {
+      const p = map.routeTiles([marker])[0];
+      return p !== null && Math.hypot(p.tx - post.tx, p.ty - post.ty) * 16 <= reach;
+    };
+    const heard = rec.allies.some((a) => near(a, 150)) || rec.flocks.some((f) => near(f, FLOCK_NOISE * TUNING[spec.kind].hearing));
+    if (!heard) fail(def.id, `the sentry posted at "${name}" is out of reach of every ally's horn and flock, so nothing can move it`);
   }
   console.log(`${def.id}: ${map.width}x${map.height}, ${rec.points.length} spawns, ${rec.routes.length} patrols, ${rec.areas.length} areas`);
 }

@@ -30,7 +30,8 @@ type Shape =
   | 'flatcone'
   | 'stake'
   | 'neon'
-  | 'glass';
+  | 'glass'
+  | 'toe';
 
 const GEOMETRIES: Record<Shape, () => THREE.BufferGeometry> = {
   floor: () => new THREE.BoxGeometry(1, 0.2, 1).translate(0, -0.1, 0),
@@ -52,6 +53,8 @@ const GEOMETRIES: Record<Shape, () => THREE.BufferGeometry> = {
   stake: () => new THREE.CylinderGeometry(0.1, 0.11, 1, 6).translate(0, 0.5, 0),
   neon: () => new THREE.BoxGeometry(1, 1, 1),
   glass: () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
+  // One toe of a footprint pressed into mud, pointing along +Z from the heel.
+  toe: () => new THREE.BoxGeometry(0.05, 0.012, 0.17).translate(0, 0, 0.085),
 };
 
 /** Deck height of Neo-Tokyo's railway viaduct: low enough not to hide the row in front of it. */
@@ -69,7 +72,7 @@ const DEPOT_H = 1.5;
 const STATION_H = 0.95;
 
 /** Shapes that don't cast shadows (flat ground, tiny details). */
-const NO_SHADOW = new Set<Shape>(['floor', 'water', 'petal', 'pebble', 'bone', 'neon', 'glass']);
+const NO_SHADOW = new Set<Shape>(['floor', 'water', 'petal', 'pebble', 'bone', 'neon', 'glass', 'toe']);
 
 interface Instance {
   matrix: THREE.Matrix4;
@@ -136,7 +139,11 @@ export const INTERIOR_LOOKS: ReadonlySet<TileLook> = new Set<TileLook>(['lobby',
 /** Tiles that make up the road surface, for lane markings and curbs. */
 const ROAD_LOOKS: ReadonlySet<TileLook> = new Set<TileLook>(['asphalt', 'puddle']);
 
-export function buildTerrain(map: TileMap): Terrain {
+/**
+ * `signTiles` ("tx,ty") are building tiles with a big advertising sign on them: they get no random
+ * vertical sign or rooftop clutter of their own, which would poke through it.
+ */
+export function buildTerrain(map: TileMap, signTiles: ReadonlySet<string> = new Set()): Terrain {
   const group = new THREE.Group();
   const batch = new Batch();
   const waterMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', transparent: true, opacity: 0.82 });
@@ -207,11 +214,16 @@ export function buildTerrain(map: TileMap): Terrain {
           break;
         case 'tree': {
           floor(tx, ty, '#6aa83e');
-          const h = 1.4 + r(tx, ty, 1) * 0.6;
-          batch.add('trunk', cx, 0, cz, '#6b4423', [1, h, 1]);
-          const green = vary('#2e6a2a', tx, ty, 0.1);
-          batch.add('conifer', cx, h + 0.2, cz, green, [1.3, 1, 1.3], [0, r(tx, ty, 2) * 3, 0]);
-          batch.add('conifer', cx, h + 0.8, cz, green.clone().offsetHSL(0, 0, 0.05), [0.95, 0.9, 0.95], [0, r(tx, ty, 3) * 3, 0]);
+          // Each conifer leans a little off the tile's center and grows to its own size, so a stand of
+          // them reads as a wild forest rather than a planted row.
+          const h = 1.2 + r(tx, ty, 1) * 0.9;
+          const size = 0.8 + r(tx, ty, 6) * 0.4;
+          const ox = cx + (r(tx, ty, 7) - 0.5) * 0.3;
+          const oz = cz + (r(tx, ty, 8) - 0.5) * 0.3;
+          batch.add('trunk', ox, 0, oz, '#6b4423', [size, h, size]);
+          const green = vary('#2e6a2a', tx, ty, 0.14);
+          batch.add('conifer', ox, h + 0.2, oz, green, [1.3 * size, size, 1.3 * size], [0, r(tx, ty, 2) * 3, 0]);
+          batch.add('conifer', ox, h + 0.2 + 0.6 * size, oz, green.clone().offsetHSL(0, 0, 0.05), [0.95 * size, 0.9 * size, 0.95 * size], [0, r(tx, ty, 3) * 3, 0]);
           break;
         }
         case 'fern':
@@ -227,13 +239,27 @@ export function buildTerrain(map: TileMap): Terrain {
         case 'moat':
           floor(tx, ty, look === 'water' ? '#6a5a3a' : '#4a4a40', 0.04, -0.45);
           batch.add('water', cx, -0.12, cz, look === 'water' ? '#3b8ac0' : '#3a7ea0');
+          // Now and then a boulder breaks the river's surface.
+          if (look === 'water' && r(tx, ty, 40) < 0.05) {
+            batch.add('blob', tx + 0.25 + r(tx, ty, 41) * 0.5, -0.24, ty + 0.25 + r(tx, ty, 42) * 0.5, vary('#8d877d', tx, ty, 0.1), [0.35 + r(tx, ty, 43) * 0.3, 0.3, 0.35 + r(tx, ty, 44) * 0.3], [0.2, r(tx, ty, 45) * 3, 0.1]);
+          }
           break;
-        case 'stones':
+        case 'stones': {
+          // River boulders worn round by the current: a couple of big ones and a small one per tile,
+          // each its own size, shade and tilt, scattered loosely enough to hop across.
           floor(tx, ty, '#6a5a3a', 0.04, -0.45);
           batch.add('water', cx, -0.12, cz, '#3b8ac0');
-          batch.add('block', tx + 0.3, -0.3, ty + 0.35, '#9b958b', [0.38, 0.32, 0.36], [0, r(tx, ty, 1), 0]);
-          batch.add('block', tx + 0.7, -0.3, ty + 0.7, '#8d877d', [0.34, 0.32, 0.32], [0, r(tx, ty, 2), 0]);
+          for (let i = 0; i < 3; i++) {
+            const big = i < 2;
+            const w = (big ? 0.55 : 0.3) + r(tx, ty, i + 11) * 0.3;
+            const d = (big ? 0.5 : 0.28) + r(tx, ty, i + 14) * 0.3;
+            const x = tx + 0.2 + r(tx, ty, i + 1) * 0.6;
+            const z = ty + (big ? 0.18 + i * 0.5 : 0.3 + r(tx, ty, 20) * 0.4) + (r(tx, ty, i + 4) - 0.5) * 0.2;
+            const shade = ['#9b958b', '#8d877d', '#7f7a6e', '#8f8a74'][Math.floor(r(tx, ty, i + 17) * 4)];
+            batch.add('blob', x, -0.2 + r(tx, ty, i + 23) * 0.05, z, vary(shade, tx + i, ty, 0.08), [w, 0.32 + r(tx, ty, i + 26) * 0.18, d], [r(tx, ty, i + 29) * 0.3, r(tx, ty, i + 32) * 3, r(tx, ty, i + 35) * 0.3]);
+          }
           break;
+        }
         case 'sand':
           floor(tx, ty, '#e2cc8e');
           break;
@@ -256,6 +282,30 @@ export function buildTerrain(map: TileMap): Terrain {
           floor(tx, ty, '#9c7a4a');
           for (let i = 0; i < 4; i++) batch.add('pebble', tx + 0.15 + r(tx, ty, i) * 0.7, 0.05, ty + 0.15 + r(tx, ty, i + 9) * 0.7, '#8a8378');
           break;
+        case 'footprints': {
+          // Soft mud with a three-toed trackway, heading toward the next print tile to the south (or east).
+          floor(tx, ty, '#7f6440', 0.04);
+          let dx = 0;
+          let dy = 1;
+          for (const [nx, ny] of [[0, 1], [1, 1], [-1, 1], [1, 0]]) {
+            if (lookAt(tx + nx, ty + ny) === 'footprints') {
+              dx = nx;
+              dy = ny;
+              break;
+            }
+          }
+          const yaw = Math.atan2(dx, dy);
+          const len = Math.hypot(dx, dy);
+          for (let i = 0; i < 2; i++) {
+            // Left and right feet, one step apart.
+            const side = i ? 0.12 : -0.12;
+            const along = i ? 0.22 : -0.22;
+            const px = cx + (dx / len) * along + (dy / len) * side;
+            const pz = cz + (dy / len) * along - (dx / len) * side;
+            for (const spread of [-0.45, 0, 0.45]) batch.add('toe', px, 0.006, pz, '#4e3b24', [1, 1, spread === 0 ? 1.15 : 1], [0, yaw + spread, 0]);
+          }
+          break;
+        }
         case 'crater':
           floor(tx, ty, '#4b403a', 0.1, -0.1);
           break;
@@ -701,9 +751,12 @@ export function buildTerrain(map: TileMap): Terrain {
           b.add('block', cx, 0, cz, vary(body, tx, ty, 0.04), [1, h, 1]);
           // Rooftops are most of what the high camera sees: caps, AC units, water tanks and antennas.
           b.add('block', cx, h, cz, '#343850', [1, 0.06, 1]);
-          if (r(tx, ty, 12) < 0.35) b.add('block', tx + 0.3, h, ty + 0.35, '#6a6e7c', [0.32, 0.2, 0.26]);
-          if (r(tx, ty, 13) < 0.15) b.add('barrel', tx + 0.65, h, ty + 0.6, '#7a7e8c', [0.5, 0.55, 0.5]);
-          if (r(tx, ty, 14) < 0.1) {
+          const signed = signTiles.has(`${tx},${ty}`);
+          if (signed) {
+            // Its sign covers the facade (and maybe the roof): nothing of the tile's own sticks through.
+          } else if (r(tx, ty, 12) < 0.35) b.add('block', tx + 0.3, h, ty + 0.35, '#6a6e7c', [0.32, 0.2, 0.26]);
+          if (!signed && r(tx, ty, 13) < 0.15) b.add('barrel', tx + 0.65, h, ty + 0.6, '#7a7e8c', [0.5, 0.55, 0.5]);
+          if (!signed && r(tx, ty, 14) < 0.1) {
             b.add('block', tx + 0.7, h, ty + 0.3, '#5a5e6a', [0.04, 0.9, 0.04]);
             b.add('neon', tx + 0.7, h + 0.92, ty + 0.3, '#ff2a2a', [0.08, 0.08, 0.08]);
           }
@@ -723,7 +776,7 @@ export function buildTerrain(map: TileMap): Terrain {
               b.add('neon', cx, 0.42, cz + 0.51, ['#fff0d8', '#d8f0ff', '#ffd8f0'][Math.floor(r(tx, ty, 16) * 3)], [0.8, 0.5, 0.02]);
               b.add('block', cx, 0.78, cz + 0.62, NEON[Math.floor(r(tx, ty, 17) * 4)], [1, 0.05, 0.26]);
             }
-            if (r(tx, ty, 18) < 0.3) {
+            if (!signed && r(tx, ty, 18) < 0.3) {
               // A vertical sign (kanban) sticking out over the street.
               b.add('block', tx + 0.88, 1.0, cz + 0.62, '#1a1a24', [0.1, 1.5, 0.36]);
               b.add('neon', tx + 0.94, 1.75, cz + 0.62, neon, [0.02, 1.4, 0.3]);
@@ -822,8 +875,11 @@ export function buildTerrain(map: TileMap): Terrain {
         case 'billboard': {
           floor(tx, ty, '#4a4c56', 0.03);
           batch.add('block', cx, 0, cz, '#2a2c34', [0.15, 1.4, 0.15]);
-          const color = ['#ff3fd0', '#3fe0ff', '#ffd23f'][Math.floor(r(tx, ty, 1) * 3)];
-          batch.add('neon', cx, 1.75, cz, color, [0.95, 0.6, 0.06]);
+          // A plain glowing panel, unless an advertising sign is mounted on the pole.
+          if (!signTiles.has(`${tx},${ty}`)) {
+            const color = ['#ff3fd0', '#3fe0ff', '#ffd23f'][Math.floor(r(tx, ty, 1) * 3)];
+            batch.add('neon', cx, 1.75, cz, color, [0.95, 0.6, 0.06]);
+          }
           break;
         }
         case 'vending':

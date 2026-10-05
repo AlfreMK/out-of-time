@@ -341,3 +341,353 @@ export function buildPterosaur(): Rig {
     },
   };
 }
+
+export interface AnzuRig extends Rig {
+  /** Settles on the nest, arms spread over the eggs, or stands up. */
+  setSitting(sitting: boolean): void;
+}
+
+/**
+ * Anzu wyliei, the Hell Creek oviraptorosaur (~3.5 m long): a toothless beak, a tall crest on the head,
+ * long legs and feathered arms and tail. Brooding, it sits on the nest with its arms spread around the
+ * eggs, as fossils of its Mongolian relatives (Citipati) were found. Colors are guesses.
+ */
+export function buildAnzu(): AnzuRig {
+  const o: PartOptions = { outline: true };
+  const plumage = '#4a3a34';
+  const light = '#8a7262';
+  const bands = '#e8dcc8';
+  const skin = '#7a6a58';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+
+  const torso = ball(0.26, plumage, 0, 0.92, 0, o);
+  torso.scale.set(0.95, 0.9, 1.3);
+  body.add(torso);
+  body.add(box(0.26, 0.12, 0.34, light, 0, 0.75, 0.04));
+
+  // A long, S-curved neck up to the crested head.
+  const neck = pivot(0, 1.02, 0.24);
+  neck.add(box(0.13, 0.36, 0.13, plumage, 0, 0.16, 0.02, o));
+  const head = pivot(0, 0.38, 0.06);
+  head.add(box(0.17, 0.16, 0.22, light, 0, 0, 0.02, o));
+  head.add(box(0.12, 0.12, 0.14, '#e0cfa0', 0, -0.03, 0.17, o));
+  head.add(box(0.04, 0.26, 0.2, '#c8442a', 0, 0.17, 0.02, o));
+  head.add(box(0.03, 0.04, 0.03, '#141414', -0.085, 0.03, 0.06), box(0.03, 0.04, 0.03, '#141414', 0.085, 0.03, 0.06));
+  neck.add(head);
+  body.add(neck);
+
+  // Arms with long feathers: banded "wings" it spreads over the nest.
+  const arm = (side: number): THREE.Group => {
+    const a = pivot(side * 0.2, 0.95, 0.12);
+    a.add(box(0.06, 0.07, 0.3, skin, 0, 0, 0.12));
+    a.add(box(0.04, 0.2, 0.36, plumage, side * 0.02, -0.08, 0.06));
+    a.add(box(0.045, 0.05, 0.3, bands, side * 0.025, -0.17, 0.06));
+    return a;
+  };
+  const armL = arm(-1);
+  const armR = arm(1);
+  body.add(armL, armR);
+
+  // A short tail ending in a fan of feathers.
+  const tail = pivot(0, 0.95, -0.3);
+  const tailCone = cone(0.12, 0.5, plumage, 0, 0, -0.24, o);
+  tailCone.rotation.x = -Math.PI / 2;
+  tail.add(tailCone);
+  tail.add(box(0.36, 0.04, 0.22, bands, 0, 0.04, -0.5), box(0.26, 0.04, 0.18, plumage, 0, 0.06, -0.46));
+  body.add(tail);
+
+  const leg = (side: number): THREE.Group =>
+    pivot(
+      side * 0.14,
+      0.8,
+      -0.02,
+      box(0.13, 0.34, 0.18, plumage, 0, -0.14, 0, o),
+      box(0.07, 0.38, 0.07, skin, 0, -0.5, -0.06, o),
+      box(0.12, 0.05, 0.2, skin, 0, -0.74, 0.03, o),
+    );
+  const legL = leg(-1);
+  const legR = leg(1);
+  body.add(legL, legR);
+
+  let sitting = 0;
+  let target = 0;
+  return {
+    root,
+    setSitting(value) {
+      target = value ? 1 : 0;
+    },
+    animate(time, walk) {
+      sitting += (target - sitting) * 0.12;
+      const phase = time * 10;
+      const fold = sitting * 1.4;
+      legL.rotation.x = Math.sin(phase) * 0.7 * walk - fold;
+      legR.rotation.x = -Math.sin(phase) * 0.7 * walk - fold;
+      body.position.y = Math.abs(Math.sin(phase)) * 0.04 * walk - sitting * 0.5;
+      // Brooding: arms swing out and down around the eggs.
+      armL.rotation.set(sitting * 0.3, -sitting * 0.9, sitting * 0.5);
+      armR.rotation.set(sitting * 0.3, sitting * 0.9, -sitting * 0.5);
+      neck.rotation.x = -0.15 + Math.sin(time * 1.8) * 0.05 + sitting * 0.1;
+      head.rotation.x = 0.15 + Math.abs(Math.sin(phase)) * 0.12 * walk;
+      tail.rotation.y = Math.sin(time * 2.2) * 0.15;
+    },
+  };
+}
+
+export interface GrazerRig extends Rig {
+  /** Head down to the ferns while standing still. */
+  setGrazing(grazing: boolean): void;
+}
+
+/**
+ * Thescelosaurus neglectus: a common Hell Creek plant-eater, 3-4 m long, running on two legs,
+ * with a small beaked head and a long stiff tail.
+ */
+export function buildThescelosaurus(): GrazerRig {
+  const o: PartOptions = { outline: true };
+  const hide = '#7a8248';
+  const dark = '#4f5630';
+  const belly = '#c8c090';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+
+  const torso = ball(0.22, hide, 0, 0.5, 0, o);
+  torso.scale.set(0.85, 0.85, 1.6);
+  body.add(torso);
+  const under = ball(0.16, belly, 0, 0.43, 0.04);
+  under.scale.set(0.9, 0.7, 1.5);
+  body.add(under);
+  for (let i = 0; i < 4; i++) body.add(box(0.04, 0.03, 0.07, dark, 0, 0.69, -0.2 + i * 0.13));
+
+  const neck = pivot(0, 0.58, 0.3);
+  neck.add(box(0.1, 0.1, 0.24, hide, 0, 0.02, 0.1, o));
+  const head = pivot(0, 0.04, 0.24);
+  head.add(box(0.13, 0.12, 0.16, hide, 0, 0, 0.04, o));
+  head.add(box(0.08, 0.07, 0.1, '#9a9a5a', 0, -0.02, 0.15, o));
+  head.add(box(0.03, 0.03, 0.02, '#141414', -0.06, 0.02, 0.06), box(0.03, 0.03, 0.02, '#141414', 0.06, 0.02, 0.06));
+  neck.add(head);
+  body.add(neck);
+
+  const tail = pivot(0, 0.52, -0.32);
+  const tailCone = cone(0.11, 1.0, hide, 0, 0, -0.5, o);
+  tailCone.rotation.x = -Math.PI / 2;
+  tail.add(tailCone);
+  body.add(tail);
+
+  const leg = (side: number): THREE.Group =>
+    pivot(
+      side * 0.12,
+      0.45,
+      0,
+      box(0.1, 0.22, 0.16, hide, 0, -0.1, 0, o),
+      box(0.06, 0.2, 0.06, dark, 0, -0.28, -0.04, o),
+      box(0.09, 0.04, 0.14, dark, 0, -0.42, 0.03, o),
+    );
+  const legL = leg(-1);
+  const legR = leg(1);
+  body.add(legL, legR);
+  body.add(box(0.035, 0.1, 0.035, dark, -0.1, 0.45, 0.24), box(0.035, 0.1, 0.035, dark, 0.1, 0.45, 0.24));
+
+  let grazing = 0;
+  let target = 0;
+  return {
+    root,
+    setGrazing(value) {
+      target = value ? 1 : 0;
+    },
+    animate(time, walk) {
+      grazing += (target - grazing) * 0.08;
+      const phase = time * 13;
+      legL.rotation.x = Math.sin(phase) * 0.8 * walk;
+      legR.rotation.x = -Math.sin(phase) * 0.8 * walk;
+      body.position.y = Math.abs(Math.sin(phase)) * 0.04 * walk;
+      // Grazing: the head goes down to the ferns and nibbles.
+      neck.rotation.x = grazing * (0.75 + Math.abs(Math.sin(time * 5)) * 0.12) + Math.sin(time * 2) * 0.04;
+      tail.rotation.y = Math.sin(time * 2.5) * 0.12;
+    },
+  };
+}
+
+/**
+ * A small Cretaceous bird, like the ones known from Hell Creek (Avisaurus, Cimolopteryx). Some birds of
+ * the time still had teeth; at this size, nobody would notice.
+ */
+export function buildBird(color: string): Rig {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const torso = ball(0.06, color, 0, 0.08, 0, {}, 6);
+  torso.scale.set(0.9, 0.85, 1.4);
+  body.add(torso);
+  const head = pivot(0, 0.13, 0.06, ball(0.035, color, 0, 0, 0, {}, 6), box(0.015, 0.015, 0.04, '#d8b860', 0, -0.005, 0.04));
+  body.add(head);
+  body.add(box(0.05, 0.01, 0.07, color, 0, 0.09, -0.1));
+  const wingL = pivot(-0.04, 0.1, 0, box(0.12, 0.01, 0.06, color, -0.06, 0, 0));
+  const wingR = pivot(0.04, 0.1, 0, box(0.12, 0.01, 0.06, color, 0.06, 0, 0));
+  body.add(wingL, wingR);
+  return {
+    root,
+    // `walk` is used as "flying": wings beat fast; on the ground the head bobs, pecking.
+    animate(time, flying) {
+      const flap = flying > 0 ? Math.sin(time * 40) * 0.9 : -0.1;
+      wingL.rotation.z = flap;
+      wingR.rotation.z = -flap;
+      wingL.visible = wingR.visible = flying > 0;
+      head.rotation.x = flying > 0 ? 0 : Math.max(0, Math.sin(time * 6)) * 0.9;
+    },
+  };
+}
+
+/**
+ * Edmontosaurus annectens, a duck-billed hadrosaur up to ~12 m long: walking on all fours to feed and
+ * drink, with a broad, flat beak (no bony crest on this species).
+ */
+export function buildEdmontosaurus(): Rig {
+  const o: PartOptions = { outline: true };
+  const hide = '#6f7a62';
+  const dark = '#4a5240';
+  const belly = '#a8a888';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  // High hips, lower shoulders: the back slopes down to the front legs, and a deep tail balances it.
+  const torso = ball(0.55, hide, 0, 1.2, 0, o, 10);
+  torso.scale.set(0.85, 0.95, 1.45);
+  torso.rotation.x = 0.18;
+  body.add(torso);
+  const under = ball(0.45, belly, 0, 1.0, 0.1, {}, 8);
+  under.scale.set(0.85, 0.7, 1.3);
+  body.add(under);
+  for (let i = 0; i < 5; i++) body.add(box(0.1, 0.08, 0.16, dark, 0, 1.78 - i * 0.07, -0.55 + i * 0.25));
+  // A thick neck curving down to the water, ending in the broad, flat "duck" bill.
+  const neck = pivot(0, 1.25, 0.7);
+  neck.add(box(0.3, 0.32, 0.55, hide, 0, 0, 0.22, o));
+  const head = pivot(0, 0, 0.55);
+  head.add(box(0.3, 0.32, 0.36, hide, 0, 0.04, 0.08, o));
+  head.add(box(0.36, 0.12, 0.34, '#c8b890', 0, -0.06, 0.36, o));
+  head.add(box(0.04, 0.05, 0.04, '#141414', -0.16, 0.12, 0.04), box(0.04, 0.05, 0.04, '#141414', 0.16, 0.12, 0.04));
+  neck.add(head);
+  body.add(neck);
+  const tail = pivot(0, 1.35, -0.75);
+  const tailCone = cone(0.34, 1.7, hide, 0, 0, -0.8, o, 8);
+  tailCone.rotation.x = -Math.PI / 2 + 0.12;
+  tailCone.scale.set(0.8, 1, 1.3);
+  tail.add(tailCone);
+  body.add(tail);
+  // Pillar-like hind legs and lighter front legs.
+  for (const [x, z, h, w] of [
+    [-0.26, 0.5, 0.95, 0.16],
+    [0.26, 0.5, 0.95, 0.16],
+    [-0.34, -0.35, 1.25, 0.26],
+    [0.34, -0.35, 1.25, 0.26],
+  ]) {
+    body.add(box(w, h, w + 0.06, dark, x, h / 2, z, o));
+  }
+  return {
+    root,
+    animate(time) {
+      // Lowering its head to drink, then looking up and around.
+      const drink = Math.max(0, Math.sin(time * 0.45));
+      neck.rotation.x = 0.35 + drink * 0.55;
+      head.rotation.x = -0.2 + drink * 0.35;
+      tail.rotation.y = Math.sin(time * 0.7) * 0.1;
+    },
+  };
+}
+
+/**
+ * Champsosaurus: a gharial-like choristodere (not a crocodile) with a long, narrow snout. Only its
+ * head and back break the surface.
+ */
+export function buildChampsosaurus(): Rig {
+  const o: PartOptions = { outline: true };
+  const hide = '#4a5a3a';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const back = ball(0.2, hide, 0, 0, -0.1, o, 8);
+  back.scale.set(0.9, 0.35, 2.0);
+  body.add(back);
+  body.add(box(0.16, 0.08, 0.22, hide, 0, 0.01, 0.38, o));
+  body.add(box(0.06, 0.05, 0.42, hide, 0, -0.01, 0.68, o));
+  body.add(box(0.035, 0.04, 0.035, '#e8d870', -0.06, 0.06, 0.36), box(0.035, 0.04, 0.035, '#e8d870', 0.06, 0.06, 0.36));
+  return {
+    root,
+    animate(time) {
+      body.rotation.y = Math.sin(time * 0.3) * 0.25;
+    },
+  };
+}
+
+/**
+ * Ankylosaurus magniventris, the last and largest ankylosaur (~6-8 m), from Hell Creek: a low, wide
+ * body covered in bony plates (osteoderms), horns at the back corners of a broad head, a beak for
+ * cropping low plants, and a heavy club at the end of its tail.
+ */
+export function buildAnkylosaurus(): Rig {
+  const o: PartOptions = { outline: true };
+  const hide = '#7a6a4a';
+  const plate = '#a8946a';
+  const dark = '#4f4430';
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const torso = ball(0.55, hide, 0, 0.55, 0, o, 10);
+  torso.scale.set(1.1, 0.55, 1.45);
+  body.add(torso);
+  // Rows of osteoderms across the back, with spikes along the flanks.
+  for (let row = 0; row < 5; row++) {
+    const z = -0.55 + row * 0.27;
+    for (const x of [-0.36, -0.12, 0.12, 0.36]) {
+      const rise = 0.84 - Math.abs(x) * 0.5 - Math.abs(z) * 0.12;
+      body.add(box(0.13, 0.06, 0.13, plate, x, rise, z));
+    }
+    for (const side of [-1, 1]) {
+      const spike = cone(0.06, 0.2, plate, side * 0.6, 0.5, z, {}, 4);
+      spike.rotation.z = -side * Math.PI / 2;
+      body.add(spike);
+    }
+  }
+  const neck = pivot(0, 0.55, 0.75);
+  neck.add(box(0.36, 0.26, 0.26, hide, 0, 0, 0.08, o));
+  const head = pivot(0, -0.02, 0.26);
+  head.add(box(0.44, 0.24, 0.34, hide, 0, 0, 0.1, o));
+  head.add(box(0.32, 0.14, 0.14, '#b8a07a', 0, -0.05, 0.32, o));
+  for (const side of [-1, 1]) {
+    const horn = cone(0.05, 0.16, plate, side * 0.22, 0.08, -0.02, {}, 4);
+    horn.rotation.set(-0.6, 0, -side * 0.9);
+    head.add(horn);
+    head.add(box(0.04, 0.04, 0.03, '#141414', side * 0.2, 0.06, 0.14));
+  }
+  neck.add(head);
+  body.add(neck);
+  const tail = pivot(0, 0.5, -0.75);
+  const tailCone = cone(0.18, 1.2, hide, 0, 0, -0.6, o, 6);
+  tailCone.rotation.x = -Math.PI / 2;
+  tail.add(tailCone);
+  const club = ball(0.2, plate, 0, 0, -1.2, o, 6);
+  club.scale.set(1.4, 0.7, 1);
+  tail.add(club);
+  body.add(tail);
+  for (const [x, z] of [
+    [-0.4, 0.45],
+    [0.4, 0.45],
+    [-0.42, -0.45],
+    [0.42, -0.45],
+  ]) {
+    body.add(box(0.2, 0.36, 0.22, dark, x, 0.18, z, o));
+  }
+  return {
+    root,
+    animate(time) {
+      // Head down cropping ferns, a few bites, then a look around; the club sways slowly.
+      const graze = Math.sin(time * 0.35) > -0.3 ? 1 : 0;
+      neck.rotation.x = graze * (0.35 + Math.abs(Math.sin(time * 4)) * 0.08) - (1 - graze) * 0.1;
+      neck.rotation.y = (1 - graze) * Math.sin(time * 0.8) * 0.4;
+      tail.rotation.y = Math.sin(time * 0.6) * 0.3;
+      torso.scale.y = 0.55 + Math.sin(time * 1.4) * 0.01;
+    },
+  };
+}

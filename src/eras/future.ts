@@ -15,8 +15,10 @@ const DEPOT_CODE = 1925;
 
 const BOT_CAUGHT: Line[] = [[Speaker.SecurityBot, 'INTRUDER DETECTED. ESCORTING YOU TO THE EXIT.'], 'You are politely but firmly marched out of the building.'];
 const DRONE_CAUGHT: Line[] = [[Speaker.Drone, 'RESTRICTED AREA. LEAVE NOW OR AUTHORITIES WILL BE NOTIFIED.'], 'The drone herds you back out into the street.'];
-/** Chronos drones are as puzzled by Pip as everyone else. */
-const DRONE_BARKS = { suspicious: ['ANOMALY?', 'UNLICENSED ANIMAL DETECTED?', 'SPECIES NOT IN DATABASE?'] };
+/** What a Chronos drone says when it starts to spot Andrew: a trespasser in a restricted district. */
+const DRONE_BARKS = { suspicious: ['UNAUTHORIZED PERSON?', 'NO ACCESS PASS DETECTED?', 'IDENTIFY YOURSELF.'] };
+/** With Pip along, they also notice the unregistered "bio-print" trotting behind him. */
+const DRONE_BARKS_PIP = { suspicious: [...DRONE_BARKS.suspicious, 'UNREGISTERED BIO-PRINT?', 'SPECIES NOT IN CATALOG?'] };
 
 const CAMERA_CAUGHT: Line[] = [[Speaker.Camera, 'UNAUTHORIZED PERSON DETECTED.'], 'An alarm wails. You slip away before security arrives.'];
 
@@ -139,13 +141,56 @@ export const FUTURE: EraDef = {
           [Speaker.Andrew, '(Crispy outside, molten inside. Some things are worth a time machine.)'],
         ),
     });
+    // Advertising everywhere: video screens on the avenue's facades and the Chronos tower, vertical
+    // neon signs, and billboards on the rooftops. Every brand is invented.
+    // Sizes fit under each building's roofline; the billboards stand on the lowest roofs, where the
+    // high camera still sees them from the street.
+    w.sign({ at: [3, 16], style: 'screen', ads: ['neurocola', 'unagi', 'memory'], width: 4, height: 1.5, y: 1 });
+    w.sign({ at: [9, 16], style: 'kanban', ads: ['karaoke'], width: 0.5, height: 1.67, y: 0.9 });
+    w.sign({ at: [10, 16], style: 'kanban', ads: ['izakaya'], width: 0.5, height: 1.67, y: 0.9 });
+    w.sign({ at: [13, 16], style: 'screen', ads: ['robodog', 'catrental'], width: 4, height: 1.5, y: 1 });
+    w.sign({ at: [17, 16], style: 'kanban', ads: ['uranai'], width: 0.5, height: 1.67, y: 0.9 });
+    w.sign({ at: [18, 16], style: 'rooftop', ads: ['pachinko'], width: 2, height: 1.2, y: 3.05 });
+    w.sign({ at: [24, 14], style: 'rooftop', ads: ['cricket'], width: 2, height: 1.2, y: 3.6 });
+    // The billboard on its pole by the avenue, and the one in the tower lobby.
+    w.sign({ at: [19, 17], style: 'screen', ads: ['umbrella', 'neurocola'], width: 1.2, height: 0.75, y: 1.3, inset: 0.5 });
+    w.sign({ at: [29, 3], style: 'screen', ads: ['chronos'], width: 1.2, height: 0.75, y: 1.3, inset: 0.5 });
+    w.sign({ at: [28, 16], style: 'screen', ads: ['chronos', 'genetics'], width: 7, height: 1.8, y: 2.3, hideIndoors: true });
+    w.sign({ at: [38, 16], style: 'screen', ads: ['kirara', 'orbit', 'umbrella'], width: 8, height: 1.8, y: 2.3, hideIndoors: true });
+    w.inspect([5, 16], 'Video screen', (w) =>
+      w.say(
+        [Speaker.Andrew, 'Neuro Cola, lab-grown eel at half price, sixty-four terabytes of extra memory. Tokyo never did do subtle.'],
+        [Speaker.Andrew, 'They all face the canal: the staff in here are a captive audience, so the ads shout across the water at the crowds in the plaza.'],
+        [Speaker.Andrew, 'The cultured unagi makes sense, at least: the Japanese eel was already on the endangered list in my time.'],
+      ),
+    );
+    w.inspect([15, 16], 'Video screen', (w) =>
+      w.say(
+        [Speaker.Andrew, 'A robot dog with a "loyal mode". Hachikō waited at Shibuya Station for nearly ten years without any firmware.'],
+        [Speaker.Andrew, 'And cats rented by the hour. Cat cafés were already a thing in my day; I suppose this was the next step.'],
+      ),
+    );
+    w.inspect([30, 16], 'Video screen', async (w) => {
+      await w.say(
+        [Speaker.Andrew, '"The future is already here." The Institute grew up, moved to Tokyo and hired a marketing department.'],
+        [Speaker.Andrew, 'Chronos Genetics: designer pets, printed to order.'],
+      );
+      if (pip) await w.say([Speaker.Andrew, "So that's why some people here take Pip for a designer pet."]);
+    });
+    w.inspect([41, 16], 'Video screen', (w) =>
+      w.say(
+        [Speaker.Andrew, "Hoshi Kirara's dome tour, rides up a space elevator, and a subscription for umbrellas."],
+        [Speaker.Andrew, 'A Japanese construction firm was already planning a space elevator for 2050 back in my time. Looks like someone built it.'],
+      ),
+    );
+
     // "No entry" boards at both bridges: north of the canal is Chronos Corp's district, hence the drones.
     for (const spot of [[12, 27], [33, 27]] as const) {
       w.decor(spot, 'restricted');
       w.inspect(spot, 'Sign', (w) =>
         w.say(
-          'Tachiiri kinshi: NO ENTRY. RESTRICTED AREA, CHRONOS CORP. DRONE PATROLS IN OPERATION.',
-          [Speaker.Andrew, "So everything north of the canal is Chronos Corp's. That's why the drones only patrol over there."],
+          'Tachiiri kinshi: NO ENTRY. RESTRICTED AREA, CHRONOS CORP. STAFF AND PERMIT HOLDERS ONLY. DRONE PATROLS IN OPERATION.',
+          [Speaker.Andrew, "So everything north of the canal is Chronos Corp's: a company district, with its own shops for the staff. That's why the drones only patrol over there."],
         ),
       );
     }
@@ -198,13 +243,13 @@ export const FUTURE: EraDef = {
         await pipReaction(
           w,
           Flag.FutPipCourier,
-          [Speaker.Courier, 'Whoa! Is that thing registered? The drones fine you for unlicensed pets. Big fines.'],
+          [Speaker.Courier, "Whoa! Is that thing registered? You don't have a pass either, do you? Neither of you is supposed to be on this side of the canal."],
           [Speaker.Andrew, 'He is a... support animal.'],
           [Speaker.Courier, 'Support animal. Sure. Keep him out of the light, then.'],
         );
         await w.say(
-          [Speaker.Courier, "Chronos drones can't see in the dark alleys, but they've got great microphones."],
-          [Speaker.Courier, "Stay out of the puddles if you don't want company."],
+          [Speaker.Courier, "Delivery permit. Chronos staff order dinner like everyone else, so they let couriers in. You, though, I'd keep moving."],
+          [Speaker.Courier, "Their drones can't see in the dark alleys, but they've got great microphones. Stay out of the puddles if you don't want company."],
         );
       },
     });
@@ -319,12 +364,12 @@ export const FUTURE: EraDef = {
     w.watcher({ kind: 'camera', route: 'B', facing: 'left', group: 'tower', caught: CAMERA_CAUGHT });
     w.watcher({ kind: 'bot', route: 'CD', wait: 1.6, group: 'tower', caught: BOT_CAUGHT });
     w.watcher({ kind: 'bot', route: 'EF', wait: 2.0, group: 'tower', caught: BOT_CAUGHT });
-    w.watcher({ kind: 'drone', route: 'GH', wait: 1.2, group: 'depot', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
-    w.watcher({ kind: 'drone', route: 'IJ', wait: 1.4, group: 'depot', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
+    w.watcher({ kind: 'drone', route: 'GH', wait: 1.2, group: 'depot', caught: DRONE_CAUGHT, barks: pip ? DRONE_BARKS_PIP : DRONE_BARKS });
+    w.watcher({ kind: 'drone', route: 'IJ', wait: 1.4, group: 'depot', caught: DRONE_CAUGHT, barks: pip ? DRONE_BARKS_PIP : DRONE_BARKS });
     w.watcher({ kind: 'camera', route: 'K', facing: 'left', group: 'depot', caught: CAMERA_CAUGHT });
-    w.watcher({ kind: 'drone', route: 'LQ', wait: 2.0, group: 'street', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
+    w.watcher({ kind: 'drone', route: 'LQ', wait: 2.0, group: 'street', caught: DRONE_CAUGHT, barks: pip ? DRONE_BARKS_PIP : DRONE_BARKS });
     // Hovers back and forth in front of the depot: always close enough to hear a splash in its doorway.
-    w.watcher({ kind: 'drone', route: [[9, 18], [14, 18]], wait: 1.2, group: 'street', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
+    w.watcher({ kind: 'drone', route: [[9, 18], [14, 18]], wait: 1.2, group: 'street', caught: DRONE_CAUGHT, barks: pip ? DRONE_BARKS_PIP : DRONE_BARKS });
 
     // --- Parts ---
     w.pickup({
@@ -375,7 +420,7 @@ async function arrive(w: WorldApi, firstVisit: boolean): Promise<void> {
   await w.wait(0.5);
   if (firstVisit) {
     await w.say(
-      [Speaker.Andrew, 'Rain... and neon. A river canal, crowds of umbrellas, and is that the Tokyo Skytree in the distance?'],
+      [Speaker.Andrew, 'Rain... and neon. A river in a concrete channel, crowds of umbrellas, and a bronze statue of a dog. Is this Shibuya?'],
       [Speaker.Andrew, "Tokyo. And the biggest tower on the block says CHRONOS CORP. It's... 2087."],
       [Speaker.Andrew, 'Sixty-one years after I left. The Institute grew up, and it moved a long way from Geneva.'],
     );

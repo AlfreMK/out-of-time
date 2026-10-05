@@ -11,13 +11,16 @@ import { Flag, progress } from '../game/flags.ts';
 const PARTS: ItemId[] = ['amber', 'obsidian', 'meteorite'];
 
 const RAPTOR_CAUGHT: Line[] = ['The Dakotaraptor spots you and lunges!', 'You scramble away and hide until it loses interest.'];
+const ANZU_CAUGHT: Line[] = ['The Anzu rears up off its nest, hissing, feathered arms spread wide!', 'You back off fast. That beak looks like it could do real damage.'];
 
 /*
  * World 1: the Late Cretaceous, about 66.5 million years ago, in the Hell Creek
  * area of Laramidia (today's Montana). Teaches observing and hiding: vision
  * cones, fern undergrowth, sneaking past a sleeping T. rex, and befriending
- * Pip, a juvenile Pachycephalosaurus. The mountain pass stays blocked until
- * the player returns with a shield.
+ * Pip, a juvenile Pachycephalosaurus. The meadow south of the river has no
+ * predators: the medicinal fern grows by a brooding Anzu, which only leaves its
+ * eggs when the birds nearby take off with a racket. The mountain pass stays
+ * blocked until the player returns with a shield.
  */
 export const PREHISTORY: EraDef = {
   id: 'prehistory',
@@ -42,6 +45,9 @@ export const PREHISTORY: EraDef = {
     if (!w.flag(progress.fixed('prehistory'))) {
       const missing = PARTS.filter((p) => !w.has(p)).map((p) => ITEMS[p].name);
       if (missing.length === 0) return 'Bring the parts back to the time machine.';
+      if (w.flag(Flag.PipMet) && !w.flag(Flag.PipFriend) && !w.has('fern')) {
+        return `Find: ${missing.join(', ')}. Pip's wound needs the sharp-smelling fern by the Anzu's nest, at the south end of the meadow.`;
+      }
       if (!w.flag(Flag.PipFriend) && !w.has('meteorite')) {
         return `Find: ${missing.join(', ')}. Something was whimpering in the valley past the east corridor.`;
       }
@@ -90,6 +96,7 @@ export const PREHISTORY: EraDef = {
       lines: [
         [Speaker.Andrew, 'These ferns have a sharp, resinous smell. Several living ferns produce antimicrobial compounds.'],
         [Speaker.Andrew, "It's not a hospital, but it beats an open wound in a swamp."],
+        [Speaker.Andrew, 'Now let me get out of here before the parent comes back.'],
       ],
     });
     w.pickup({
@@ -119,10 +126,89 @@ export const PREHISTORY: EraDef = {
       },
     });
 
+    // --- The south meadow: no predators, just life ---
+    // An Anzu broods by the medicinal ferns. Footsteps only make it turn its head; it leaves the eggs
+    // for nothing less than the racket of the birds next door taking off.
+    w.decor('7', 'anzunest');
+    w.watcher({ kind: 'anzu', route: '7', facing: 'up', posted: true, caught: ANZU_CAUGHT });
+    w.inspect('7', 'Nest', (w) =>
+      w.say(
+        [Speaker.Andrew, 'Long eggs, laid in pairs all around a ring. That fits an oviraptorosaur nest.'],
+        [Speaker.Andrew, 'A relative of this one in China laid blue-green eggs: the pigments survived in the fossil shells.'],
+        [Speaker.Andrew, "And I'd rather not be here when the parent gets back."],
+      ),
+    );
+    w.flock({
+      at: '6',
+      talk: async (w) => {
+        if (w.flag(Flag.PreMetBirds)) {
+          await w.say([Speaker.Andrew, 'Pecking at seeds and bugs. Walk right up to them and they would scatter, loudly.']);
+          return;
+        }
+        w.setFlag(Flag.PreMetBirds);
+        await w.say(
+          [Speaker.Andrew, 'Birds! Real birds, living right alongside the dinosaurs. Some kinds still had teeth.'],
+          [Speaker.Andrew, "Skittish little things. If anyone walked right up to them, they'd go up with an awful racket."],
+        );
+        if (w.flag(Flag.PreNestHint) && !w.flag(progress.got('fern'))) {
+          await w.say([Speaker.Andrew, 'Loud enough to bring that Anzu off its nest to check, I bet.']);
+        }
+      },
+    });
+    for (const at of [[20, 51], [26, 56], [7, 53], [44, 43]] as const) {
+      w.critter({
+        at,
+        kind: 'thescelosaurus',
+        talk: async (w) => {
+          if (w.flag(Flag.PreMetTheso)) {
+            await w.say([Speaker.Andrew, 'Munching ferns, not a care in the world. For another half a million years, anyway.']);
+            return;
+          }
+          w.setFlag(Flag.PreMetTheso);
+          await w.say(
+            [Speaker.Andrew, 'A Thescelosaurus! A shy plant-eater, three or four meters from beak to tail.'],
+            [Speaker.Andrew, 'A famous fossil of one, nicknamed Willo, was said to have a fossilized heart. Later studies decided it was an ironstone lump.'],
+          );
+        },
+      });
+    }
+    w.inspect('8', 'Footprints', (w) =>
+      w.say(
+        [Speaker.Andrew, 'Three-toed footprints in the mud. A theropod, but not a raptor: dromaeosaurs walked on two toes, holding the sickle claw up.'],
+        [Speaker.Andrew, 'Too small for a T. rex, too. Whoever left these went south, toward the ferns at the end of the meadow.'],
+      ),
+    );
+
+    // An Ankylosaurus cropping ferns in the meadow's southwest corner: set dressing, but solid.
+    w.decor([15, 55], 'ankylosaurus');
+    w.inspect([15, 55], 'Ankylosaurus', (w) =>
+      w.say(
+        [Speaker.Andrew, 'Ankylosaurus: the last and biggest of the armored dinosaurs. Bony plates all over, and a club of fused bone at the end of its tail.'],
+        [Speaker.Andrew, 'It crops low plants with that wide beak. Even a T. rex would think twice about biting through that armor.'],
+      ),
+    );
+
+    // The river: wading hadrosaurs, a Champsosaurus and dragonflies.
+    w.decor([52, 38], 'edmontosaurus');
+    w.decor([57, 38], 'edmontosaurus');
+    w.decor([18, 38], 'champsosaurus');
+    w.decor([46, 36], 'champsosaurus');
+    w.decor([26, 38], 'dragonflies');
+    w.decor([40, 36], 'dragonflies');
+    w.inspect([55, 39], 'Edmontosaurus', (w) =>
+      w.say(
+        [Speaker.Andrew, 'Edmontosaurus, a duck-billed hadrosaur. The big ones reached twelve meters.'],
+        [Speaker.Andrew, 'Their jaws packed hundreds of teeth in stacked rows that kept replacing themselves, to grind tough plants all day.'],
+      ),
+    );
+    w.inspect([18, 39], 'Champsosaurus', (w) =>
+      w.say(
+        [Speaker.Andrew, "That's not a crocodile. It's a Champsosaurus, a choristodere: a whole different branch of reptiles."],
+        [Speaker.Andrew, "And a survivor: it'll make it through the asteroid that's coming, and live on for millions of years."],
+      ),
+    );
+
     // --- Dangers ---
-    // Meadow
-    w.watcher({ kind: 'raptor', route: '67', wait: 1.6, caught: RAPTOR_CAUGHT });
-    w.watcher({ kind: 'raptor', route: '89', wait: 1.2, caught: RAPTOR_CAUGHT });
     // Deep forest
     w.watcher({ kind: 'raptor', route: 'AB', wait: 1.0, caught: RAPTOR_CAUGHT });
     w.watcher({ kind: 'raptor', route: 'CD', wait: 1.4, caught: RAPTOR_CAUGHT });
@@ -189,9 +275,33 @@ export const PREHISTORY: EraDef = {
       once: Flag.PreMeadowHint,
       run: (w) =>
         w.say(
-          [Speaker.Andrew, 'Is that... a Dakotaraptor? Five meters of feathers and claws. Okay. Stay calm.'],
-          [Speaker.Andrew, "No grass anywhere: grasslands won't exist for millions of years. But those fern thickets should hide me."],
-          'Ferns and bushes hide you. Stay out of the vision cones, and hold {sneak} to sneak quietly.',
+          [Speaker.Andrew, "No grass anywhere: grasslands won't exist for millions of years. Ferns and horsetails cover the ground instead."],
+          'Ferns and bushes hide you. Hold {sneak} to sneak: animals won\'t hear you coming.',
+        ),
+    });
+    // Coming up the path from the south, before the nest comes into view.
+    for (const area of [
+      { x: 34, y: 49, w: 29, h: 2 },
+      { x: 29, y: 49, w: 5, h: 10 },
+    ]) {
+      w.trigger({
+        area,
+        once: Flag.PreNestHint,
+        run: (w) =>
+          w.say(
+            [Speaker.Andrew, "Over there: a nest, and something big sitting on it. Feathers, a tall crest, a toothless beak... an Anzu!"],
+            [Speaker.Andrew, 'Fossils of its relatives in Mongolia were found right on top of their nests, arms spread over the eggs. Brooding, like birds.'],
+            [Speaker.Andrew, 'And those sharp-smelling ferns grow right next to it. It won\'t leave the eggs for a few footsteps. It would take a real commotion.'],
+          ),
+      });
+    }
+    w.trigger({
+      area: { x: 28, y: 33, w: 9, h: 3 },
+      once: Flag.PreRaptorHint,
+      run: (w) =>
+        w.say(
+          [Speaker.Andrew, 'This side of the river is raptor country. Dakotaraptor: five meters of feathers and claws. Okay. Stay calm.'],
+          'Stay out of the vision cones. Hide in the undergrowth, and sneak past when they look away.',
         ),
     });
     w.trigger({
@@ -264,7 +374,7 @@ async function healPip(w: WorldApi, pip: CompanionHandle): Promise<void> {
         [Speaker.Pip, '*weak whimper*'],
         [Speaker.Andrew, "Its leg is cut pretty badly. Easy, little one. I'm not going to hurt you."],
         [Speaker.Andrew, 'That wound needs cleaning. Maybe a medicinal plant...'],
-        [Speaker.Andrew, 'I saw some sharp-smelling ferns in the meadow south of the machine.'],
+        [Speaker.Andrew, 'I saw some sharp-smelling ferns at the south end of the meadow, past the time machine.'],
       );
     } else {
       await w.say([Speaker.Pip, '*whimper*'], [Speaker.Andrew, "Hang in there. I'll find that fern."]);

@@ -63,6 +63,7 @@ There is no combat. Enemies are moving puzzles:
 ### 1. Late Cretaceous: Hell Creek, 66.5 million years ago (observe and hide)
 
 - Sneak past feathered *Dakotaraptor* packs and a sleeping *T. rex* in a pitch-black cave.
+- South of the river, a peaceful meadow: shy *Thescelosaurus* graze (sneak up to get a look), an armored *Ankylosaurus* crops ferns, *Edmontosaurus* wade in the river next to a *Champsosaurus*, pterosaurs glide overhead, and three-toed tracks lead to an *Anzu* brooding its nest beside the medicinal fern. It only leaves its eggs for a real commotion, such as the birds next door taking off when you walk right up to them.
 - Heal **Pip**, a juvenile *Pachycephalosaurus*, who follows you and settles the head-butting debate by smashing boulders. Once the machine can carry two (after Cologne), come back for him and climb the rocky pass with the shield to find Pike's first cache and his nav module, which opens the next window. From then on Pip travels with you and his skull solves a puzzle in every era.
 - Parts: hardened tree resin (not amber yet!), obsidian, meteoric iron.
 - Locked area: a mountain pass under falling rocks. Come back with a shield.
@@ -84,7 +85,7 @@ There is no combat. Enemies are moving puzzles:
 
 ### 4. Neo-Tokyo, 2087 (manipulate systems)
 
-- A neon-lit Tokyo night in the June rainy season: Hachikō's statue, a Shinto shrine with a big torii and ema plaques, Yamanote Line trains rolling along a viaduct (the station chimes, announces them and plays a little melody as each one comes in), rows of vending machines, street stalls (ramen, yakitori, takoyaki), hydrangeas in bloom, a giant virtual-idol hologram over the avenue, and the Chronos Corp tower beyond the canal, where "no entry" boards mark the start of its drone-patrolled district.
+- A neon-lit Tokyo night in the June rainy season: Hachikō's statue, a Shinto shrine with a big torii and ema plaques, Yamanote Line trains rolling along a viaduct (the station chimes, announces them and plays a little melody as each one comes in), rows of vending machines, street stalls (ramen, yakitori, takoyaki), hydrangeas in bloom, a giant virtual-idol hologram over the avenue, loud cyberpunk ads (video screens, vertical neon signs and rooftop billboards for cultured eel, cats by the hour, cricket burgers and space-elevator rides, all invented), and the Chronos Corp tower beyond the Shibuya River, where "no entry" boards mark the start of its drone-patrolled company district.
 - **Yuki**, a hacker who leaked Chronos's files, recognizes you. Recover her cyberdeck from the maglev depot (its door code is hidden in plain sight, between the shrine and a talkative commuter) and she rigs your multitool to hack terminals (switching off cameras, drones and bots) and gives you a power cell, which opens the crypt in 1248. Avoid puddles that splash, or wait for a Yamanote train: while one thunders over the viaduct (a board under the place name counts down to the next one), nobody hears your steps.
 - Steal an optical lattice clock (the fix for the broken year display; Pip has to ram a jammed blast door behind the lab's laser) and superconducting tape.
 

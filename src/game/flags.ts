@@ -20,6 +20,10 @@ export const Flag = {
   PreForestHint: 'pre:forestHint',
   PreGorgeHint: 'pre:gorgeHint',
   PreMeadowHint: 'pre:meadowHint',
+  PreMetBirds: 'pre:metBirds',
+  PreMetTheso: 'pre:metTheso',
+  PreNestHint: 'pre:nestHint',
+  PreRaptorHint: 'pre:raptorHint',
   PrePassShield: 'pre:passShield',
   PreValleyHint: 'pre:valleyHint',
   // Cologne, 1248

@@ -1,5 +1,5 @@
 /**
- * Neo-Tokyo map, 2087: a canal off the Sumida River, a plaza with Hachikō's
+ * Neo-Tokyo map, 2087: the Shibuya River in its concrete channel, a plaza with Hachikō's
  * statue and a small Shinto shrine, neon streets, a maglev depot and the
  * Chronos Corp tower (48x40 tiles). Uppercase letters and digits are markers;
  * see FUTURE_MARKER_BASE.

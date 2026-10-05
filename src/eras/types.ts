@@ -13,7 +13,7 @@ export type Script = (w: WorldApi) => Promise<void> | void;
 export type Condition = (w: WorldApi) => boolean;
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
-export type WatcherKind = 'raptor' | 'guard' | 'dog' | 'soldier' | 'rider' | 'camera' | 'drone' | 'bot';
+export type WatcherKind = 'raptor' | 'anzu' | 'guard' | 'dog' | 'soldier' | 'rider' | 'camera' | 'drone' | 'bot';
 
 export interface Barks {
   suspicious: string[];
@@ -56,7 +56,7 @@ export interface WatcherSpec {
   dormant?: boolean;
   /**
    * Holds a fixed post: a small noise (a thrown pebble, crunching glass) only draws a remark, and footsteps only
-   * make it turn its head. Only a war horn (the scouts' trutruka) makes it leave.
+   * make it turn its head. Only a big commotion (the scouts' trutruka, a flock bursting out of cover) makes it leave.
    */
   posted?: boolean;
   /** Runs when a `posted` watcher shrugs off a small noise (e.g. Andrew realizing pebbles won't work here). */
@@ -141,8 +141,64 @@ export interface AllySpec {
   talk: Script;
 }
 
+/**
+ * A flock of small birds pecking on the ground. Walking up to them (not sneaking) sends them up with
+ * a racket that carries like a war horn: even a `posted` watcher leaves its post to look. They land
+ * again a while later.
+ */
+export interface FlockSpec {
+  at: RoutePoint;
+  /** Runs when the player sneaks close enough to look at them. */
+  talk: Script;
+}
+
+/** A harmless animal that grazes around its spot and bolts when someone walks up to it (sneak to get close). */
+export interface CritterSpec {
+  at: RoutePoint;
+  kind: 'thescelosaurus';
+  talk: Script;
+}
+
+/** The (invented) products and services Neo-Tokyo's signs advertise; their artwork lives in render/signs.ts. */
+export type AdId =
+  | 'neurocola'
+  | 'unagi'
+  | 'memory'
+  | 'robodog'
+  | 'catrental'
+  | 'cricket'
+  | 'chronos'
+  | 'genetics'
+  | 'orbit'
+  | 'kirara'
+  | 'umbrella'
+  | 'pachinko'
+  | 'karaoke'
+  | 'izakaya'
+  | 'uranai';
+
+/**
+ * An advertising sign: a video screen on a facade (cycling through its ads), a vertical neon sign
+ * (tategaki), or a billboard on a rooftop. Signs lean back so they read from the high camera.
+ */
+export interface SignSpec {
+  /** The building tile it hangs on; a sign wider than one tile spans east from here. */
+  at: RoutePoint;
+  style: 'screen' | 'kanban' | 'rooftop';
+  ads: AdId[];
+  /** Size in tiles. */
+  width: number;
+  height: number;
+  /** Height of its bottom edge above the street, in tiles. */
+  y: number;
+  /** Hidden while the player is inside a building (its wall drops away, the sign would float). */
+  hideIndoors?: boolean;
+  /** How far (tiles) north of the tile's south face it hangs: 0.5 puts it on a pole in the tile's middle. */
+  inset?: number;
+}
+
 /** Set dressing that doesn't fit the tile grid. */
-export type DecorKind = 'pedestrian' | 'restricted' | 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol' | 'metrosign';
+export type DecorKind = 'pedestrian' | 'restricted' | 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol' | 'metrosign' | 'anzunest' | 'edmontosaurus' | 'champsosaurus' | 'dragonflies' | 'ankylosaurus';
 
 export interface MusicZone {
   area: string | TileRect;
@@ -242,6 +298,9 @@ export interface WorldApi {
   /** Set dressing at every occurrence of a marker, in reading order; `null` leaves a spot empty. */
   decorEach(marker: string, kinds: Array<DecorKind | null>): Array<ActorHandle | null>;
   ally(spec: AllySpec): ActorHandle;
+  flock(spec: FlockSpec): void;
+  sign(spec: SignSpec): void;
+  critter(spec: CritterSpec): void;
 
   // Systems
   /** A loud noise where the player stands (an alarm, a crash): watchers in earshot come to look. */

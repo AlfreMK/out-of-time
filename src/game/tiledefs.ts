@@ -17,6 +17,7 @@ export type TileLook =
   | 'rubble'
   | 'crater'
   | 'gravel'
+  | 'footprints'
   // Middle Ages
   | 'mgrass'
   | 'bush'
@@ -173,6 +174,7 @@ export const PREHISTORY_TILES: TileSet = {
   r: { look: 'rubble', solid: false },
   x: { look: 'crater', solid: false },
   '^': { look: 'gravel', solid: false },
+  k: { look: 'footprints', solid: false },
 };
 
 export const MEDIEVAL_TILES: TileSet = {

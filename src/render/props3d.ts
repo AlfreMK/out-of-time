@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DecorKind } from '../eras/types.ts';
 import type { ItemId } from '../game/state.ts';
+import { buildAnkylosaurus, buildChampsosaurus, buildEdmontosaurus } from './creatures.ts';
 import { buildHuman } from './humans.ts';
 import { outline, toon } from './materials.ts';
 import { ball, box, cone, cylinder, glow, type PartOptions } from './primitives.ts';
@@ -775,6 +776,84 @@ export function buildDecor(kind: DecorKind): DecorRig {
       for (const [x, z] of [[-0.3, -0.6], [0.3, -0.6], [-0.25, 0.55], [0.25, 0.55]]) root.add(cylinder(0.07, 0.06, 1.1, bone, x, 0.6, z, { outline: true }, 6));
       root.add(cylinder(0.12, 0.04, 0.9, bone, 0, 0.75, -1.3, { outline: true }, 6).rotateX(-0.7));
       return still;
+    }
+    case 'anzunest': {
+      // An oviraptorosaur nest: a low mound with elongated eggs laid in pairs around a ring, tilted
+      // toward the middle, where the parent sits. (A Chinese relative, Heyuannia, laid blue-green eggs.)
+      const mound = ball(0.52, '#7f6440', 0, 0, 0, {}, 10);
+      mound.scale.set(1, 0.28, 1);
+      root.add(mound);
+      for (let i = 0; i < 6; i++) {
+        for (const offset of [-0.13, 0.13]) {
+          const a = (i / 6) * Math.PI * 2 + offset;
+          const egg = ball(0.065, '#7ab0a2', Math.cos(a) * 0.42, 0.1, Math.sin(a) * 0.42, { outline: true }, 6);
+          egg.scale.set(1, 1, 1.9);
+          egg.rotation.set(0.5, -a + Math.PI / 2, 0, 'YXZ');
+          root.add(egg);
+        }
+      }
+      return still;
+    }
+    case 'edmontosaurus': {
+      // Wading in the river, facing upstream (west), half in the water.
+      const rig = buildEdmontosaurus();
+      rig.root.rotation.y = -Math.PI / 2;
+      rig.root.position.y = -0.3;
+      root.add(rig.root);
+      const offset = Math.random() * 10;
+      return { root, update: (time) => rig.animate(time + offset, 0) };
+    }
+    case 'ankylosaurus': {
+      // Grazing low ferns, side-on to the camera with its head to the west.
+      const rig = buildAnkylosaurus();
+      rig.root.rotation.y = -Math.PI / 2;
+      root.add(rig.root);
+      return { root, update: (time) => rig.animate(time, 0) };
+    }
+    case 'champsosaurus': {
+      // Drifts along the river, surfacing for a breath and slipping under again.
+      const rig = buildChampsosaurus();
+      root.add(rig.root);
+      const offset = Math.random() * 20;
+      return {
+        root,
+        update(time) {
+          const t = time + offset;
+          const up = Math.sin(t * 0.5);
+          rig.root.position.set(Math.sin(t * 0.08) * 1.4, up > 0 ? -0.12 : -0.12 + up * 0.5, 0);
+          rig.root.rotation.y = Math.cos(t * 0.08) > 0 ? Math.PI / 2 : -Math.PI / 2;
+          rig.root.visible = up > -0.6;
+          rig.animate(t, 0);
+        },
+      };
+    }
+    case 'dragonflies': {
+      // Dragonflies (the order is far older than the dinosaurs) darting low over the water.
+      const flies = [0, 1, 2].map((i) => {
+        const fly = new THREE.Group();
+        fly.add(box(0.025, 0.025, 0.16, i === 1 ? '#c84a2a' : '#2a8ab0'));
+        const wings = new THREE.Group();
+        wings.add(box(0.26, 0.004, 0.04, '#e8f4ff', 0, 0.02, 0.03, { transparent: true, opacity: 0.6 }));
+        wings.add(box(0.22, 0.004, 0.035, '#e8f4ff', 0, 0.02, -0.02, { transparent: true, opacity: 0.6 }));
+        fly.add(wings);
+        root.add(fly);
+        return { fly, wings, seed: i * 2.1 };
+      });
+      return {
+        root,
+        update(time) {
+          for (const { fly, wings, seed } of flies) {
+            const t = time * 0.9 + seed;
+            // Hover, then dart: a fast swing every few seconds.
+            const dart = t + Math.sin(t * 0.7) * 1.5;
+            const x = Math.sin(dart * 1.3) * 0.9;
+            const z = Math.sin(dart * 0.9 + seed) * 0.5;
+            fly.position.set(x, 0.45 + Math.sin(t * 2.3) * 0.08, z);
+            fly.rotation.y = Math.atan2(Math.cos(dart * 1.3) * 1.17, Math.cos(dart * 0.9 + seed) * 0.45);
+            wings.scale.x = 0.6 + Math.abs(Math.sin(time * 60 + seed)) * 0.4;
+          }
+        },
+      };
     }
     case 'skull': {
       root.add(box(0.5, 0.7, 0.5, '#3a3a42', 0, 0.35, 0, { outline: true }));

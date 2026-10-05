@@ -4,7 +4,10 @@ import type { EraId } from '../game/state.ts';
 import type { World } from '../game/world.ts';
 import type { Entity } from '../game/entities/entity.ts';
 import type { Watcher } from '../game/entities/watcher.ts';
+import { Sign } from '../game/entities/props.ts';
+import { buildPterosaur } from './creatures.ts';
 import { createView, PX, type EntityView } from './entity-views.ts';
+import type { Rig } from './primitives.ts';
 import { buildTerrain, INTERIOR_LOOKS, type Terrain } from './terrain.ts';
 
 interface Theme {
@@ -65,6 +68,8 @@ export class WorldView {
   private indoors = 0;
   private weatherOpacity = 0;
   private readonly weather: THREE.LineSegments | THREE.Points | null = null;
+  /** Pterosaurs soaring high over the Cretaceous map; their shadows sweep across the ground. */
+  private readonly flyers: Rig[] = [];
 
   constructor(world: World) {
     this.world = world;
@@ -95,7 +100,25 @@ export class WorldView {
       this.weatherOpacity = (this.weather.material as THREE.Material).opacity;
     }
 
-    this.terrain = buildTerrain(world.map);
+    if (world.era === 'prehistory') {
+      for (let i = 0; i < 2; i++) {
+        const flyer = buildPterosaur();
+        flyer.root.scale.setScalar(1.6);
+        flyer.root.traverse((child) => (child.castShadow = true));
+        this.flyers.push(flyer);
+        this.scene.add(flyer.root);
+      }
+    }
+
+    // Tiles carrying an advertising sign, so the terrain doesn't put its own clutter through them.
+    const signTiles = new Set<string>();
+    for (const entity of world.entityList) {
+      if (!(entity instanceof Sign)) continue;
+      const tx = Math.floor(entity.x / PX);
+      const ty = Math.floor(entity.y / PX) - 1;
+      for (let i = 0; i < Math.max(1, Math.ceil(entity.spec.width)); i++) signTiles.add(`${tx + i},${ty}`);
+    }
+    this.terrain = buildTerrain(world.map, signTiles);
     this.scene.add(this.terrain.group);
     const outskirts = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshToonMaterial({ color: this.theme.outskirts }));
     outskirts.rotation.x = -Math.PI / 2;
@@ -125,6 +148,7 @@ export class WorldView {
     this.syncCones();
     this.syncRings();
     this.syncParticles();
+    this.syncFlyers(time);
     const here = this.world.map.defAt(this.world.hero.x, this.world.hero.y).look;
     this.terrain.update(time, INTERIOR_LOOKS.has(here) ? here : null);
 
@@ -309,6 +333,25 @@ export class WorldView {
       // A noise drowned out by the train only draws a faint, small ring: nobody heard it.
       if (ring.muffled) mesh.scale.multiplyScalar(0.5);
       (mesh.material as THREE.MeshBasicMaterial).opacity = (ring.muffled ? 0.15 : 0.5) * (1 - ring.t);
+    });
+  }
+
+  /**
+   * Two azhdarchids gliding on wide loops over the whole map (one each way), so now and then one
+   * passes overhead. Wingbeats come in short bursts between long glides.
+   */
+  private syncFlyers(time: number): void {
+    const map = this.world.map;
+    this.flyers.forEach((flyer, i) => {
+      const dir = i === 0 ? 1 : -1;
+      const a = time * 0.13 * dir + i * 2.5;
+      const x = map.width / 2 + Math.cos(a) * map.width * 0.42;
+      const z = map.height / 2 + Math.sin(a) * map.height * 0.4;
+      flyer.root.position.set(x, 7 + i * 1.2 + Math.sin(time * 0.4 + i) * 0.4, z);
+      // Facing along the loop, banking into the turn.
+      flyer.root.rotation.set(0, Math.atan2(-Math.sin(a) * dir, Math.cos(a) * dir), -0.25 * dir, 'YXZ');
+      const flapping = Math.sin(time * 0.5 + i * 3) > 0.6;
+      flyer.animate(flapping ? time : 0, 0);
     });
   }
 

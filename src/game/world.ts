@@ -10,8 +10,10 @@ import type {
   CompanionHandle,
   CompanionSpec,
   ChatSpec,
+  CritterSpec,
   DecorKind,
   EraDef,
+  FlockSpec,
   GateHandle,
   GateSpec,
   HazardSpec,
@@ -21,6 +23,7 @@ import type {
   PickupSpec,
   RoutePoint,
   Script,
+  SignSpec,
   SleeperSpec,
   TriggerSpec,
   WatcherSpec,
@@ -35,14 +38,17 @@ import {
   Arrow,
   Bait,
   Companion,
+  Critter,
   Decor,
   FallingRock,
+  Flock,
   Gate,
   Inspect,
   Machine,
   Npc,
   Obstacle,
   Pickup,
+  Sign,
   Sleeper,
   Thrown,
 } from './entities/props.ts';
@@ -428,6 +434,7 @@ export class World implements Scene, WorldApi {
       this.game.audio.sfx(sound);
       if (by instanceof Watcher && by.kind === 'dog') this.game.audio.sfx('bark');
       if (by instanceof Watcher && by.kind === 'raptor') this.game.audio.sfx('growl');
+      if (by instanceof Watcher && by.kind === 'anzu') this.game.audio.sfx('hiss');
       if (by instanceof Watcher && (by.kind === 'camera' || by.kind === 'drone' || by.kind === 'bot')) this.game.audio.sfx('alarm');
       if (sound === 'roar') this.shake(4, 1.2);
       by?.emote('alert', 1.5);
@@ -1615,6 +1622,22 @@ export class World implements Scene, WorldApi {
     this.allies.push(ally);
     this.entities.push(ally);
     return this.handle(ally);
+  }
+
+  flock(spec: FlockSpec): void {
+    const p = this.routeOf([spec.at])[0];
+    this.entities.push(new Flock(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, spec.talk));
+  }
+
+  sign(spec: SignSpec): void {
+    const p = this.routeOf([spec.at])[0];
+    // (x, y) is the sign's bottom-left corner on the tile's south face.
+    this.entities.push(new Sign(p.tx * TILE, (p.ty + 1) * TILE, spec));
+  }
+
+  critter(spec: CritterSpec): void {
+    const p = this.routeOf([spec.at])[0];
+    this.entities.push(new Critter(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, spec.kind, spec.talk));
   }
 
   // WorldApi: systems
