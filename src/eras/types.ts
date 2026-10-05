@@ -23,10 +23,18 @@ export interface Barks {
   holdPost: string[];
 }
 
+/** A route stop: a marker character, or a tile's coordinates for maps whose 36 markers are all taken. */
+export type RoutePoint = string | readonly [tx: number, ty: number];
+
+/** Stops visited in order, looping: a string of marker characters, or a list of stops. */
+export type Route = string | readonly RoutePoint[];
+
 export interface WatcherSpec {
   kind: WatcherKind;
-  /** Marker characters visited in order, looping. A single marker means a fixed post. */
-  route: string;
+  /** Stops visited in order, looping. A single stop means a fixed post. */
+  route: Route;
+  /** Names this watcher so a `ChatSpec` can pair it with another one. */
+  id?: string;
   /** Direction faced at a fixed post. */
   facing?: Facing;
   /** How far (radians) the gaze sweeps left and right while standing still. */
@@ -57,8 +65,25 @@ export interface WatcherSpec {
   look?: NpcLook;
 }
 
+/**
+ * Two watchers who chat whenever both stand still close together (a patrol stopping by a posted guard).
+ * Their lines alternate in speech bubbles; any suspicion or noise breaks the conversation off.
+ */
+export interface ChatSpec {
+  /** The `WatcherSpec.id`s of the two speakers; the first one opens every conversation. */
+  between: readonly [string, string];
+  /** Conversations, played in turn and then from the start again. Lines alternate between the two. */
+  talks: ReadonlyArray<readonly string[]>;
+  /**
+   * Whether chatting takes their eyes off the job (facing each other, with shorter, narrower cones).
+   * Posted sentries keep watching their post while they talk.
+   */
+  distracted: boolean;
+}
+
 export interface NpcSpec {
-  marker: string;
+  /** A marker, or a tile's coordinates for maps whose markers are all taken. */
+  marker: RoutePoint;
   look: NpcLook;
   name: string;
   facing?: Facing;
@@ -117,7 +142,7 @@ export interface AllySpec {
 }
 
 /** Set dressing that doesn't fit the tile grid. */
-export type DecorKind = 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol' | 'metrosign';
+export type DecorKind = 'pedestrian' | 'restricted' | 'whale' | 'hachiko' | 'burgundy' | 'cologne' | 'hologram' | 'skull' | 'archer_n' | 'archer_s' | 'rack' | 'pudu' | 'horse' | 'torii' | 'megatherium' | 'crystal_calcite' | 'crystal_beryl' | 'crystal_pyrite' | 'crystal_quartz' | 'crystal_fluorite' | 'exhibit_meteorite' | 'exhibit_ammonite' | 'exhibit_trilobite' | 'exhibit_lynx' | 'exhibit_dodo' | 'exhibit_deck' | 'exhibit_clock' | 'exhibit_idol' | 'metrosign';
 
 export interface MusicZone {
   area: string | TileRect;
@@ -197,6 +222,7 @@ export interface WorldApi {
 
   // Spawning (used from EraDef.setup)
   watcher(spec: WatcherSpec): void;
+  chat(spec: ChatSpec): void;
   npc(spec: NpcSpec): ActorHandle;
   pickup(spec: PickupSpec): void;
   trigger(spec: TriggerSpec): void;
@@ -205,12 +231,14 @@ export interface WorldApi {
   companion(spec: CompanionSpec): CompanionHandle;
   obstacle(spec: ObstacleSpec): ActorHandle;
   machine(marker: string, interact: Script): void;
-  inspect(marker: string, label: string, interact: Script): void;
+  /** An inspect spot on a marker, or on a tile's coordinates for maps whose markers are all taken. */
+  inspect(marker: RoutePoint, label: string, interact: Script): void;
   /** One inspect spot at every occurrence of a marker; `interact` gets the spot's index in reading order. */
   inspectEach(marker: string, label: string, interact: (w: WorldApi, index: number) => Promise<void> | void): void;
   checkpoint(marker: string): void;
   gate(spec: GateSpec): GateHandle;
-  decor(marker: string, kind: DecorKind): void;
+  /** Set dressing on a marker, or on a tile's coordinates. */
+  decor(marker: RoutePoint, kind: DecorKind): void;
   /** Set dressing at every occurrence of a marker, in reading order; `null` leaves a spot empty. */
   decorEach(marker: string, kinds: Array<DecorKind | null>): Array<ActorHandle | null>;
   ally(spec: AllySpec): ActorHandle;
@@ -241,6 +269,8 @@ export interface EraDef {
   musicZones?: MusicZone[];
   /** Music while standing on dark tiles (caves). */
   darkMusic?: MusicTheme;
+  /** A train runs on the map's viaduct on a fixed timetable; while it passes, it drowns out the player's noises. */
+  train?: boolean;
   map: readonly string[];
   markerBase: Record<string, string>;
   tiles: TileSet;

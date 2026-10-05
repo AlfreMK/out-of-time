@@ -1,4 +1,4 @@
-import type { Facing } from '../eras/types.ts';
+import type { Facing, Route } from '../eras/types.ts';
 import type { TileDef, TileSet } from './tiledefs.ts';
 
 export const TILE = 16;
@@ -149,6 +149,39 @@ export class TileMap {
 
   hasMarker(ch: string): boolean {
     return this.markers.has(ch);
+  }
+
+  /**
+   * Whether something about as wide as a person can walk straight from the middle of tile `a`
+   * to the middle of tile `b` without brushing anything `passable` rejects.
+   */
+  straightWalk(a: TilePoint, b: TilePoint, passable: (tx: number, ty: number) => boolean): boolean {
+    const ax = a.tx * TILE + TILE / 2;
+    const ay = a.ty * TILE + TILE / 2;
+    const dx = b.tx * TILE + TILE / 2 - ax;
+    const dy = b.ty * TILE + TILE / 2 - ay;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return true;
+    // Check the center line and both shoulders.
+    const nx = (-dy / len) * 5;
+    const ny = (dx / len) * 5;
+    for (let d = 0; d <= len; d += 4) {
+      const x = ax + (dx * d) / len;
+      const y = ay + (dy * d) / len;
+      for (const side of [0, 1, -1]) {
+        if (!passable(Math.floor((x + nx * side) / TILE), Math.floor((y + ny * side) / TILE))) return false;
+      }
+    }
+    return true;
+  }
+
+  /** The tiles a route visits, in order; null for a marker the map doesn't have. */
+  routeTiles(route: Route): Array<TilePoint | null> {
+    const stops = typeof route === 'string' ? route.split('') : route;
+    return stops.map((stop) => {
+      if (typeof stop !== 'string') return { tx: stop[0], ty: stop[1] };
+      return this.hasMarker(stop) ? this.marker(stop) : null;
+    });
   }
 
   /** Bounding box of every occurrence of a marker — used to define areas with two corners. */

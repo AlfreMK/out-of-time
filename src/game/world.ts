@@ -9,6 +9,7 @@ import type {
   ArriveScript,
   CompanionHandle,
   CompanionSpec,
+  ChatSpec,
   DecorKind,
   EraDef,
   GateHandle,
@@ -18,6 +19,7 @@ import type {
   NpcSpec,
   ObstacleSpec,
   PickupSpec,
+  RoutePoint,
   Script,
   SleeperSpec,
   TriggerSpec,
@@ -45,6 +47,8 @@ import {
   Thrown,
 } from './entities/props.ts';
 import { Watcher, type Food, type NoiseKind } from './entities/watcher.ts';
+import { Chat } from './entities/chat.ts';
+import { TRAIN_APPROACH, trainState, type TrainPhase } from './train.ts';
 import { showEnding, startTravel, toTitle } from './flow.ts';
 import type { Game, Scene } from './game.ts';
 import { FOODS, ITEMS, TOOLS } from './items.ts';
@@ -97,9 +101,19 @@ export interface NoiseRing {
   y: number;
   radius: number;
   t: number;
+  /** Drowned out (by a passing train): nobody heard it. */
+  muffled?: boolean;
 }
 
-const THROW_RANGE = 64;
+/** A quick tap tosses a pebble or bread this far (px); holding the button winds up to the long throw. */
+const THROW_SHORT = 56;
+const THROW_LONG = 136;
+/** Seconds of holding to reach the long throw. */
+const THROW_WINDUP = 0.8;
+/** The item bar at the bottom center: square slots, in UI pixels. */
+const SLOT = 18;
+/** Widest a speech bubble gets before its text wraps (UI px). */
+const BUBBLE_WIDTH = 130;
 /** A wrapped journal line; the first line of a speech starts with the speaker's name in their color. */
 interface JournalRow {
   name?: string;
@@ -142,6 +156,14 @@ export class World implements Scene, WorldApi {
   private readonly watchers: Watcher[] = [];
   private readonly sleepers: Sleeper[] = [];
   private readonly allies: Ally[] = [];
+  private readonly chats: Chat[] = [];
+  private trainPhase: TrainPhase | null = null;
+  private clackTimer = 0;
+  private trainNoticed = false;
+  /** Seconds into the current train approach last frame, to fire the station melody once. */
+  private approachTime = 0;
+  /** Middle of the top of the Yamanote station hall (where its announcements come from), if the map has one. */
+  private readonly station: { x: number; y: number } | null;
   private machineEntity: Machine | null = null;
   private readonly triggers: TriggerState[] = [];
   private readonly hazards: HazardState[] = [];
@@ -170,6 +192,10 @@ export class World implements Scene, WorldApi {
   private toastTime = 0;
   private toolIndex = 0;
   private toolCooldown = 0;
+  /** Seconds the throw button has been held (winding up a throw), or null when not aiming. */
+  private throwCharge: number | null = null;
+  /** Seconds left showing the selected item's name above the item bar. */
+  private toolNameTime = 0;
   private paused = false;
   private pauseIndex = 0;
   private journalOpen = false;
@@ -198,6 +224,7 @@ export class World implements Scene, WorldApi {
     for (const zone of def.musicZones ?? []) {
       this.musicZones.push({ rect: this.rectOf(zone.area), theme: zone.theme, when: zone.when });
     }
+    this.station = this.findStation();
     this.onArrive = def.setup(this) ?? null;
     this.view = new WorldView(this);
     this.game.state.checkpoint = { era: def.id, x: start.x, y: start.y };
@@ -225,6 +252,7 @@ export class World implements Scene, WorldApi {
 
   enter(): void {
     this.visits++;
+    this.game.audio.train(0);
     this.updateMusic();
     if (this.visits === 1) {
       const visitedFlag = progress.visited(this.def.id);
@@ -243,6 +271,7 @@ export class World implements Scene, WorldApi {
   update(dt: number): void {
     const input = this.game.input;
     if (this.paused) {
+      this.game.audio.train(0);
       this.updatePause(dt);
       return;
     }
@@ -263,7 +292,9 @@ export class World implements Scene, WorldApi {
     else if (this.yearPicker.active) this.yearPicker.update(input, this.game.audio);
 
     for (const entity of this.entities) entity.update(dt, this);
+    for (const chat of this.chats) chat.update(dt, this);
     this.entities = this.entities.filter((e) => !e.removed);
+    this.updateTrain(dt);
     this.updateTrail();
     this.updateParticles(dt);
 
@@ -274,7 +305,12 @@ export class World implements Scene, WorldApi {
       this.updateCheckpoints(dt);
       this.updateInteraction();
       this.updateTools(dt);
+    } else {
+      // A cutscene or menu cancels any throw being aimed, and swallows scrolls meant for the journal.
+      this.throwCharge = null;
+      if (!this.paused) this.game.input.wheelLines();
     }
+    this.toolNameTime = Math.max(0, this.toolNameTime - dt);
     this.updateMusic();
 
     this.view.sync(this.time, dt, this.shakeTime > 0 ? this.shakePower : 0);
@@ -301,9 +337,14 @@ export class World implements Scene, WorldApi {
     return false;
   }
 
-  /** Emits a sound. Watchers investigate, dogs come for food, sleepers wake up. */
+  /**
+   * Emits a sound. Watchers investigate, dogs come for food, sleepers wake up. While a train
+   * thunders past, footsteps and small noises are drowned out and nobody hears them.
+   */
   noise(x: number, y: number, radius: number, kind: NoiseKind, food?: Food): void {
-    if (kind !== 'food') this.rings.push({ x, y, radius, t: 0 });
+    const muffled = this.trainMuffles && (kind === 'step' || kind === 'noise');
+    if (kind !== 'food') this.rings.push({ x, y, radius, t: 0, muffled });
+    if (muffled) return;
     for (const watcher of this.watchers) watcher.hear(x, y, radius, kind, this, food);
     if (kind === 'food') return;
     for (const sleeper of this.sleepers) {
@@ -312,6 +353,71 @@ export class World implements Scene, WorldApi {
         return;
       }
     }
+  }
+
+  /** True while a train is passing: its roar covers the player's footsteps and small noises. */
+  get trainMuffles(): boolean {
+    return this.def.train === true && trainState(this.time).phase === 'passing';
+  }
+
+  /**
+   * How loud the railway sounds where the player is, 1 next to the viaduct (and the station) down to
+   * 0.3 across the city: still audible from the depot, whose splashes it covers, but no longer in your ears.
+   */
+  private trainNearness(): number {
+    const track = this.station?.y ?? this.map.height * TILE;
+    const tiles = Math.abs(track - this.hero.y) / TILE;
+    return clamp(1 - (tiles - 5) / 14, 0.3, 1);
+  }
+
+  /** Seconds into the approach when the station's platform melody starts (after the "pin-pon"). */
+  private static readonly MELODY_AT = 1.4;
+
+  /**
+   * The train's sounds, as at a real Yamanote station: the announcement chime and a platform melody
+   * as it comes, its horn as it rolls in, then its roar and the clack of the rails.
+   */
+  private updateTrain(dt: number): void {
+    if (!this.def.train) return;
+    const train = trainState(this.time);
+    const audio = this.game.audio;
+    const near = this.trainNearness();
+    if (train.phase !== this.trainPhase) {
+      if (train.phase === 'approaching') audio.sfx('chime', near);
+      if (train.phase === 'passing') audio.sfx('trainhorn', near);
+      if (train.phase === 'passing' && !this.trainNoticed) {
+        this.trainNoticed = true;
+        this.toast('The train! Its roar drowns out my steps.');
+      }
+      this.trainPhase = train.phase;
+    }
+    const approach = train.phase === 'approaching' ? train.progress * TRAIN_APPROACH : 0;
+    if (this.approachTime < World.MELODY_AT && approach >= World.MELODY_AT) audio.sfx('jingle', near);
+    this.approachTime = approach;
+    let level = 0;
+    // The rails only start to hum in the last couple of seconds before it arrives.
+    if (train.phase === 'approaching') level = Math.max(0, (approach - (TRAIN_APPROACH - 2)) / 2) * 0.4;
+    if (train.phase === 'passing') level = Math.min(1, 0.4 + train.progress * 6, train.remaining / 1.2);
+    audio.train(level * near);
+    if (train.phase === 'passing') {
+      this.clackTimer -= dt;
+      if (this.clackTimer <= 0) {
+        audio.sfx('clack', near);
+        this.clackTimer = 0.62;
+      }
+    }
+  }
+
+  private findStation(): { x: number; y: number } | null {
+    for (let ty = 0; ty < this.map.height; ty++) {
+      for (let tx = 0; tx < this.map.width; tx++) {
+        if (this.map.def(tx, ty).look !== 'station') continue;
+        let width = 1;
+        while (this.map.inBounds(tx + width, ty) && this.map.def(tx + width, ty).look === 'station') width++;
+        return { x: (tx + width / 2) * TILE, y: (ty + 0.5) * TILE };
+      }
+    }
+    return null;
   }
 
   /** The player got spotted (or woke something up): play the scene and respawn. */
@@ -345,6 +451,7 @@ export class World implements Scene, WorldApi {
       }
       entity.reset?.();
     }
+    for (const chat of this.chats) chat.reset();
     this.trail.length = 0;
     for (const entity of this.entities) if (entity instanceof Companion && entity.following) entity.regroup(this);
     for (const t of this.triggers) {
@@ -548,34 +655,74 @@ export class World implements Scene, WorldApi {
     return TOOLS.filter((item) => this.has(item));
   }
 
+  /** The item selected in the item bar, if the player has any. */
+  private get selectedTool(): ItemId | null {
+    const options = this.availableTools();
+    return options.length > 0 ? options[this.toolIndex % options.length] : null;
+  }
+
+  /**
+   * The item bar: number keys or a tap pick a slot, LB/RB (L1/R1), Q/Y or the mouse wheel step through it.
+   * Pebbles and bread are thrown on release: a tap tosses them a short way, holding winds up a long throw.
+   */
   private updateTools(dt: number): void {
     this.toolCooldown = Math.max(0, this.toolCooldown - dt);
     const input = this.game.input;
     const options = this.availableTools();
-    if (input.consume('cycle') && options.length > 1) {
-      this.toolIndex = (this.toolIndex + 1) % options.length;
+    const count = options.length;
+    const before = this.toolIndex % Math.max(1, count);
+    let index = before;
+    const picked = input.pickedSlot();
+    if (picked !== null && picked < count) index = picked;
+    if (input.consume('cycle')) index = (index + 1) % Math.max(1, count);
+    if (input.consume('prev')) index = (index + count - 1) % Math.max(1, count);
+    const wheel = input.wheelLines();
+    if (wheel !== 0 && count > 0) index = (((index + Math.sign(wheel)) % count) + count) % count;
+    if (index !== before && count > 1) {
+      this.toolIndex = index;
+      this.throwCharge = null;
+      this.toolNameTime = 1.6;
       this.game.audio.sfx('blip');
-      this.toast(`Using: ${ITEMS[options[this.toolIndex]].name}`);
+    }
+
+    const item = this.selectedTool;
+    if (this.throwCharge !== null) {
+      if (input.isHeld('throw')) {
+        this.throwCharge += dt;
+        return;
+      }
+      const power = Math.min(1, this.throwCharge / THROW_WINDUP);
+      this.throwCharge = null;
+      if (item && item !== 'pifilka') this.throwItem(item, THROW_SHORT + (THROW_LONG - THROW_SHORT) * power);
+      return;
     }
     if (!input.consume('throw') || this.toolCooldown > 0) return;
-    if (options.length === 0) {
+    if (!item) {
       this.toast('Nothing to use.');
       return;
     }
-    const item = options[this.toolIndex % options.length];
     if (item === 'pifilka') {
       this.whistle();
       return;
     }
+    // Start winding up; the throw happens when the button is let go.
+    this.throwCharge = 0;
+  }
+
+  /** Where a throw of `range` px straight ahead would land (it stops short of walls and trees). */
+  private throwTarget(range: number): { x: number; y: number } {
     const dir = this.hero.dir;
     let reach = 8;
-    for (let s = 8; s <= THROW_RANGE; s += 4) {
+    for (let s = 8; s <= range; s += 4) {
       const def = this.map.defAt(this.hero.x + dir.x * s, this.hero.y - 4 + dir.y * s);
       if (def.solid && !def.low) break;
       reach = s;
     }
-    const tx = this.hero.x + dir.x * reach;
-    const ty = this.hero.y + dir.y * reach;
+    return { x: this.hero.x + dir.x * reach, y: this.hero.y + dir.y * reach };
+  }
+
+  private throwItem(item: ItemId, range: number): void {
+    const { x: tx, y: ty } = this.throwTarget(range);
     this.toolCooldown = 0.6;
     this.game.audio.sfx('throw');
     this.entities.push(
@@ -762,6 +909,8 @@ export class World implements Scene, WorldApi {
   draw(screen: Screen, time: number): void {
     this.view.render(screen);
     this.drawOverheads(screen, time);
+    this.drawAnnouncement(screen);
+    this.drawAim(screen, time);
     this.drawPrompt(screen, time);
     this.drawHud(screen);
     this.dialogue.draw(screen, time);
@@ -804,15 +953,7 @@ export class World implements Scene, WorldApi {
       if (!(entity instanceof Watcher)) continue;
       if (entity.bark) {
         const p = this.view.project(entity.x, entity.y, entity.height + 10);
-        if (p.visible) {
-          ui.font = `5.5px ${FONT_FAMILY}`;
-          const w = ui.measureText(entity.bark.text).width + 8;
-          const y = p.y - (emote ? 26 : 12);
-          ui.globalAlpha = Math.min(1, entity.bark.time * 3);
-          drawPanel(ui, p.x - w / 2, y, w, 9, 0.9);
-          drawText(ui, entity.bark.text, p.x, y + 1.8, { size: 5.5, align: 'center', color: '#f4f1de', shadow: null });
-          ui.globalAlpha = 1;
-        }
+        if (p.visible) this.drawBubble(screen, entity.bark.text, p.x, p.y - (emote ? 26 : 12), Math.min(1, entity.bark.time * 3));
       }
       if (entity.suspicion > 0.02 && !emote) {
         const p = this.view.project(entity.x, entity.y, entity.height + 4);
@@ -824,6 +965,39 @@ export class World implements Scene, WorldApi {
         ui.fillRect(p.x - w / 2, p.y - 3, w * Math.min(1, entity.suspicion), 2);
       }
     }
+  }
+
+  /** A speech bubble whose bottom row sits at `y`; long lines wrap onto more rows above it. */
+  private drawBubble(screen: Screen, text: string, x: number, y: number, alpha: number, color = '#f4f1de'): void {
+    const ui = screen.ui;
+    const lines = wrapText(ui, text, BUBBLE_WIDTH, 5.5);
+    ui.font = `5.5px ${FONT_FAMILY}`;
+    const w = Math.max(...lines.map((line) => ui.measureText(line).width)) + 8;
+    const top = y - (lines.length - 1) * 6.5;
+    ui.globalAlpha = alpha;
+    drawPanel(ui, x - w / 2, top, w, 3 + lines.length * 6.5, 0.9);
+    lines.forEach((line, i) => drawText(ui, line, x, top + 1.8 + i * 6.5, { size: 5.5, align: 'center', color, shadow: null }));
+    ui.globalAlpha = 1;
+  }
+
+  /**
+   * The station's announcement while a train comes in: the standard Japanese line, then what the
+   * translator earpiece makes of it.
+   */
+  private drawAnnouncement(screen: Screen): void {
+    if (!this.station || !this.def.train) return;
+    const train = trainState(this.time);
+    if (train.phase !== 'approaching') return;
+    const p = this.view.project(this.station.x, this.station.y, 52);
+    if (!p.visible) return;
+    const t = train.progress * TRAIN_APPROACH;
+    const text =
+      t < 2.2
+        ? '♪ Mamonaku, densha ga mairimasu.'
+        : t < 4
+          ? 'Kiiroi sen no uchigawa made osagari kudasai.'
+          : '"A train is arriving. Please stand behind the yellow line."';
+    this.drawBubble(screen, text, p.x, p.y, Math.min(1, train.remaining * 2), '#c8f0a0');
   }
 
   private drawPrompt(screen: Screen, time: number): void {
@@ -857,6 +1031,7 @@ export class World implements Scene, WorldApi {
     drawText(ui, info.place, 9, 16, { size: 5.5, color: '#9aa6bb' });
 
     this.drawParts(screen);
+    this.drawTrain(screen);
 
     if (this.toastTime > 0 && this.toastText) {
       const tw = Math.min(220, this.toastText.length * 5 + 16);
@@ -870,10 +1045,11 @@ export class World implements Scene, WorldApi {
     if (this.dialogue.active || this.menu.active || this.yearPicker.active) return;
 
     if (this.game.godMode) {
+      // Above the item bar.
       ui.font = `bold 6px ${FONT_FAMILY}`;
       const w = ui.measureText('GOD MODE').width + 12;
-      drawPanel(ui, (VIEW_W - w) / 2, VIEW_H - 18, w, 13);
-      drawText(ui, 'GOD MODE', VIEW_W / 2, VIEW_H - 14.5, { size: 6, align: 'center', bold: true, color: '#ff6bd6' });
+      drawPanel(ui, (VIEW_W - w) / 2, VIEW_H - SLOT - 30, w, 13);
+      drawText(ui, 'GOD MODE', VIEW_W / 2, VIEW_H - SLOT - 26.5, { size: 6, align: 'center', bold: true, color: '#ff6bd6' });
     }
 
     if (this.hero.hidden || this.hero.sneaking) {
@@ -882,20 +1058,116 @@ export class World implements Scene, WorldApi {
       drawText(ui, label, 29, VIEW_H - 14.5, { size: 6.5, align: 'center', bold: true, color: this.hero.hidden ? '#5aff8a' : '#7fd8ff' });
     }
 
+    this.drawHotbar(screen);
+  }
+
+  /**
+   * Minecraft-style item bar at the bottom center: one slot per usable item, the selected one framed,
+   * with how to pick (number keys, LB/RB or L1/R1, a tap) and the button that uses it.
+   */
+  private drawHotbar(screen: Screen): void {
     const options = this.availableTools();
-    if (options.length > 0) {
-      const input = this.game.input;
-      const item = options[this.toolIndex % options.length];
-      const label = `${input.glyph('throw')} ${ITEMS[item].name}`;
-      ui.font = `6px ${FONT_FAMILY}`;
-      const cycle = options.length > 1 ? `  ${input.glyph('cycle')}` : '';
-      const bw = ui.measureText(label + cycle).width + 22;
-      const bx = VIEW_W - bw - 4;
-      drawPanel(ui, bx, VIEW_H - 18, bw, 14);
-      ui.drawImage(ITEM_SPRITES[item], bx + 4, VIEW_H - 15);
-      drawText(ui, label, bx + 15, VIEW_H - 14.5, { size: 6 });
-      if (cycle) drawText(ui, cycle.trim(), bx + bw - 6, VIEW_H - 14.5, { size: 6, align: 'right', color: '#9aa6bb' });
+    if (options.length === 0) return;
+    const ui = screen.ui;
+    const input = this.game.input;
+    const selected = this.toolIndex % options.length;
+    const x0 = Math.round((VIEW_W - options.length * SLOT) / 2);
+    const y0 = VIEW_H - SLOT - 4;
+    input.hotbar = { x: x0, y: y0, slotW: SLOT, h: SLOT, count: options.length };
+    const pad = input.device === 'xbox' || input.device === 'playstation';
+    options.forEach((item, i) => {
+      const x = x0 + i * SLOT;
+      drawPanel(ui, x, y0, SLOT, SLOT, i === selected ? 0.92 : 0.7);
+      const sprite = ITEM_SPRITES[item];
+      ui.globalAlpha = i === selected ? 1 : 0.65;
+      ui.drawImage(sprite, x + (SLOT - sprite.width * 1.5) / 2, y0 + (SLOT - sprite.height * 1.5) / 2, sprite.width * 1.5, sprite.height * 1.5);
+      ui.globalAlpha = 1;
+      if (input.device === 'keyboard') drawText(ui, String(i + 1), x + 2.5, y0 + 1.5, { size: 5, color: '#9aa6bb', shadow: null });
+      if (i === selected) {
+        ui.strokeStyle = '#f1c232';
+        ui.lineWidth = 1;
+        ui.strokeRect(x + 0.5, y0 + 0.5, SLOT - 1, SLOT - 1);
+        // The button that uses it, in the corner.
+        drawText(ui, input.glyph('throw'), x + SLOT - 2.5, y0 + SLOT - 7, { size: 5, bold: true, align: 'right', color: '#f4f1de' });
+      }
+    });
+    if (pad && options.length > 1) {
+      const [prev, next] = input.device === 'xbox' ? ['LB', 'RB'] : ['L1', 'R1'];
+      drawText(ui, prev, x0 - 4, y0 + SLOT / 2 - 3, { size: 5.5, bold: true, align: 'right', color: '#9aa6bb' });
+      drawText(ui, next, x0 + options.length * SLOT + 4, y0 + SLOT / 2 - 3, { size: 5.5, bold: true, color: '#9aa6bb' });
     }
+    // The selected item's name, for a moment after switching (and while winding up a throw).
+    if (this.toolNameTime > 0 || this.throwCharge !== null) {
+      const name = ITEMS[options[selected]].name;
+      ui.globalAlpha = this.throwCharge !== null ? 1 : Math.min(1, this.toolNameTime * 3);
+      drawText(ui, name, VIEW_W / 2, y0 - 8, { size: 6, align: 'center', color: '#f4f1de' });
+      ui.globalAlpha = 1;
+    }
+  }
+
+  /** While winding up a throw: where it will land, and how far it's wound up. */
+  private drawAim(screen: Screen, time: number): void {
+    if (this.throwCharge === null) return;
+    const power = Math.min(1, this.throwCharge / THROW_WINDUP);
+    const target = this.throwTarget(THROW_SHORT + (THROW_LONG - THROW_SHORT) * power);
+    const p = this.view.project(target.x, target.y, 0);
+    if (!p.visible) return;
+    const ui = screen.ui;
+    const r = 3.5 + Math.sin(time * 10) * 0.6;
+    ui.strokeStyle = power >= 1 ? '#5aff8a' : '#f4f1de';
+    ui.lineWidth = 1;
+    ui.beginPath();
+    ui.ellipse(p.x, p.y, r * 1.6, r, 0, 0, Math.PI * 2);
+    ui.stroke();
+    ui.fillStyle = ui.strokeStyle;
+    ui.fillRect(p.x - 0.5, p.y - 0.5, 1, 1);
+  }
+
+  /**
+   * Train board under the era label, so players know when they can splash through puddles: a bar that fills
+   * until the next train, a blinking warning as it comes, and a draining "muffled" bar while it passes
+   * (blinking again in its last seconds).
+   */
+  private drawTrain(screen: Screen): void {
+    if (!this.def.train) return;
+    const ui = screen.ui;
+    const train = trainState(this.time);
+    const blink = Math.floor(this.time * 4) % 2 === 0;
+    const w = 84;
+    const x = 4;
+    const y = 27;
+    drawPanel(ui, x, y, w, 18);
+    let label = 'NEXT TRAIN';
+    let color = '#9aa6bb';
+    let fill = train.progress;
+    if (train.phase === 'approaching') {
+      label = 'TRAIN COMING';
+      color = blink ? '#f1c232' : '#8a7020';
+      fill = 1;
+    } else if (train.phase === 'passing') {
+      const ending = train.remaining < 2;
+      label = ending ? 'ALMOST GONE' : 'MUFFLED';
+      color = ending && blink ? '#ff6b6b' : '#5aff8a';
+      fill = 1 - train.progress;
+    }
+    // A tiny Yamanote car: silver with the yellow-green stripe, headlight lit while it runs.
+    const cx = x + 5;
+    const cy = y + 4;
+    ui.fillStyle = '#d0d4dc';
+    ui.fillRect(cx, cy, 13, 6);
+    ui.fillStyle = '#2a3a52';
+    ui.fillRect(cx + 1, cy + 1, 10, 2);
+    ui.fillStyle = '#7ac143';
+    ui.fillRect(cx, cy + 4, 13, 1);
+    ui.fillStyle = train.phase === 'away' ? '#555b66' : '#fff4c8';
+    ui.fillRect(cx + 12, cy + 3, 1, 1);
+    drawText(ui, label, x + 22, y + 3, { size: 5.5, bold: true, color });
+    const barX = x + 22;
+    const barW = w - 27;
+    ui.fillStyle = 'rgba(0,0,0,0.6)';
+    ui.fillRect(barX, y + 11, barW, 3);
+    ui.fillStyle = train.phase === 'away' ? '#6f7d96' : color;
+    ui.fillRect(barX, y + 11, barW * clamp(fill, 0, 1), 3);
   }
 
   /** Top-right checklist of the machine parts this era needs, by name once diagnosed. */
@@ -949,8 +1221,8 @@ export class World implements Scene, WorldApi {
       `Move ........ ${moveWith}`,
       `Interact .... ${input.glyph('interact')}${pad ? '' : ' / Space'}`,
       `Sneak ....... Hold ${input.glyph('sneak')}${pad ? ' / tilt gently' : ''}`,
-      `Use item .... ${input.glyph('throw')}`,
-      `Switch item . ${input.glyph('cycle')}`,
+      `Use item .... ${input.glyph('throw')} (hold: throw far)`,
+      `Switch item . ${input.glyph('cycle')}${input.device === 'touch' ? ' / tap it' : input.device === 'keyboard' ? ' / Q / wheel' : ''}`,
       `Pause ....... ${input.glyph('pause')}`,
     ];
     controls.forEach((line, i) => drawText(ui, line, 150, 54 + i * 10, { size: 6.5, color: '#b8c4d8' }));
@@ -1053,8 +1325,8 @@ export class World implements Scene, WorldApi {
   // Helpers
 
   /** Ground position for characters standing on a marker tile. */
-  feet(marker: string): { x: number; y: number } {
-    const p = this.map.marker(marker);
+  feet(marker: RoutePoint): { x: number; y: number } {
+    const p = this.routeOf([marker])[0];
     return { x: p.tx * TILE + TILE / 2, y: p.ty * TILE + 12 };
   }
 
@@ -1192,10 +1464,25 @@ export class World implements Scene, WorldApi {
   // WorldApi: spawning
 
   watcher(spec: WatcherSpec): void {
-    const route: TilePoint[] = spec.route.split('').map((ch) => this.map.marker(ch));
-    const watcher = new Watcher(spec, route);
+    const watcher = new Watcher(spec, this.routeOf(spec.route));
     this.watchers.push(watcher);
     this.entities.push(watcher);
+  }
+
+  chat(spec: ChatSpec): void {
+    const [a, b] = spec.between.map((id) => {
+      const found = this.watchers.find((w) => w.spec.id === id);
+      if (!found) throw new Error(`Chat: no watcher with id "${id}".`);
+      return found;
+    });
+    this.chats.push(new Chat(a, b, spec));
+  }
+
+  private routeOf(route: WatcherSpec['route']): TilePoint[] {
+    return this.map.routeTiles(route).map((p, i) => {
+      if (!p) throw new Error(`Route stop ${i} uses a missing marker.`);
+      return p;
+    });
   }
 
   npc(spec: NpcSpec): ActorHandle {
@@ -1272,8 +1559,8 @@ export class World implements Scene, WorldApi {
     this.entities.push(this.machineEntity);
   }
 
-  inspect(marker: string, label: string, interact: Script): void {
-    const p = this.map.marker(marker);
+  inspect(marker: RoutePoint, label: string, interact: Script): void {
+    const p = this.routeOf([marker])[0];
     this.entities.push(new Inspect(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, label, interact));
   }
 
@@ -1307,8 +1594,8 @@ export class World implements Scene, WorldApi {
     };
   }
 
-  decor(marker: string, kind: DecorKind): void {
-    const p = this.map.marker(marker);
+  decor(marker: RoutePoint, kind: DecorKind): void {
+    const p = this.routeOf([marker])[0];
     this.entities.push(new Decor(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2, kind));
   }
 

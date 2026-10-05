@@ -9,7 +9,7 @@
  * are respected: you can only cross them in their direction.
  */
 import { ERAS } from '../src/eras/index.ts';
-import type { ActorHandle, CompanionHandle, EraDef, GateHandle, WorldApi } from '../src/eras/types.ts';
+import type { ActorHandle, ChatSpec, CompanionHandle, EraDef, GateHandle, Route, RoutePoint, WorldApi } from '../src/eras/types.ts';
 import { FACING_VECTORS, TileMap, type TilePoint, type TileRect } from '../src/game/tilemap.ts';
 
 const errors: string[] = [];
@@ -23,19 +23,20 @@ const companionHandle: CompanionHandle = { ...handle, following: false, follow: 
 const gateHandle: GateHandle = { isOpen: false, open: noop, close: noop };
 
 interface Recorded {
-  points: Array<{ marker: string; what: string; mustWalk: boolean }>;
+  points: Array<{ marker: RoutePoint; what: string; mustWalk: boolean }>;
   /** Markers of characters that physically block their tile (people, the machine, the T. rex). */
-  solids: string[];
+  solids: RoutePoint[];
   areas: Array<{ area: string | TileRect; what: string }>;
-  routes: Array<{ route: string; kind: string; posted: boolean }>;
+  routes: Array<{ route: Route; name: string; kind: string; posted: boolean; id?: string; group?: string }>;
+  chats: ChatSpec[];
   gates: string[];
   /** Hidden allies present from the start (not ones spawned later by a flag). */
   allies: string[];
 }
 
 function record(def: EraDef): Recorded {
-  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [], allies: [] };
-  const point = (marker: string, what: string, mustWalk = true): void => {
+  const rec: Recorded = { points: [], areas: [], routes: [], gates: [], solids: [], allies: [], chats: [] };
+  const point = (marker: RoutePoint, what: string, mustWalk = true): void => {
     rec.points.push({ marker, what, mustWalk });
   };
   const api: WorldApi = {
@@ -57,7 +58,9 @@ function record(def: EraDef): Recorded {
     fadeOut: async () => {},
     fadeIn: async () => {},
     machineGlitch: noop,
-    watcher: (spec) => rec.routes.push({ route: spec.route, kind: spec.kind, posted: spec.posted === true }),
+    watcher: (spec) =>
+      rec.routes.push({ route: spec.route, name: routeName(spec.route), kind: spec.kind, posted: spec.posted === true, id: spec.id, group: spec.group }),
+    chat: (spec) => rec.chats.push(spec),
     npc: (spec) => (point(spec.marker, `npc ${spec.name}`), rec.solids.push(spec.marker), handle),
     pickup: (spec) => point(spec.marker, `pickup ${spec.item}`),
     trigger: (spec) => rec.areas.push({ area: spec.area, what: 'trigger' }),
@@ -84,6 +87,9 @@ function record(def: EraDef): Recorded {
   def.objective(api);
   return rec;
 }
+
+/** How a route reads in messages: "AB", or "A 24,10 C". */
+const routeName = (route: Route): string => (typeof route === 'string' ? route : route.map((p) => (typeof p === 'string' ? p : `${p[0]},${p[1]}`)).join(' '));
 
 type Blocked = (tx: number, ty: number) => boolean;
 
@@ -139,16 +145,20 @@ function validate(def: EraDef): void {
   // Solid characters block their tile, except people meant to step aside after talking.
   const MOVES_ASIDE: Record<string, string[]> = { araucania: ['W', 'L'], medieval: ['G'] };
   const solidTiles = new Set(
-    rec.solids.filter((m) => map.hasMarker(m) && !(MOVES_ASIDE[def.id] ?? []).includes(m)).map((m) => `${map.marker(m).tx},${map.marker(m).ty}`),
+    rec.solids
+      .filter((m) => !(typeof m === 'string' && (MOVES_ASIDE[def.id] ?? []).includes(m)))
+      .map((m) => map.routeTiles([m])[0])
+      .filter((p) => p !== null)
+      .map((p) => `${p.tx},${p.ty}`),
   );
   const pastGates: Blocked = (tx, ty) => solidTiles.has(`${tx},${ty}`);
 
   for (const { marker, what, mustWalk } of rec.points) {
-    if (!map.hasMarker(marker)) {
-      fail(def.id, `${what}: marker "${marker}" missing`);
+    const p = map.routeTiles([marker])[0];
+    if (!p || !map.inBounds(p.tx, p.ty)) {
+      fail(def.id, `${what}: marker "${routeName([marker])}" missing`);
       continue;
     }
-    const p = map.marker(marker);
     if (mustWalk && !walkable(p.tx, p.ty)) fail(def.id, `${what} at ${p.tx},${p.ty} is on a solid tile`);
     // Interact from a neighboring walkable tile (gates are assumed open here).
     const spots = [p, { tx: p.tx, ty: p.ty + 1 }, { tx: p.tx, ty: p.ty - 1 }, { tx: p.tx + 1, ty: p.ty }, { tx: p.tx - 1, ty: p.ty }];
@@ -161,18 +171,36 @@ function validate(def: EraDef): void {
       fail(def.id, `${what}: area out of bounds`);
     }
   }
-  for (const { route } of rec.routes) {
-    const points = route.split('').map((ch) => (map.hasMarker(ch) ? map.marker(ch) : null));
+  const checkRoute = (route: Route, what: string): TilePoint[] | null => {
+    const points = map.routeTiles(route);
     if (points.some((p) => p === null)) {
-      fail(def.id, `route "${route}" uses a missing marker`);
-      continue;
+      fail(def.id, `${what} "${routeName(route)}" uses a missing marker`);
+      return null;
     }
     for (let i = 0; i < points.length; i++) {
       const a = points[i]!;
       const b = points[(i + 1) % points.length]!;
-      if (!walkable(a.tx, a.ty)) fail(def.id, `route "${route}" point ${a.tx},${a.ty} is solid`);
-      if (!reachable(map, a, b)) fail(def.id, `route "${route}" can't walk ${a.tx},${a.ty} -> ${b.tx},${b.ty}`);
+      if (!walkable(a.tx, a.ty)) fail(def.id, `${what} "${routeName(route)}" point ${a.tx},${a.ty} is solid`);
+      else if (!reachable(map, a, b)) fail(def.id, `${what} "${routeName(route)}" can't walk ${a.tx},${a.ty} -> ${b.tx},${b.ty}`);
     }
+    return points as TilePoint[];
+  };
+  const routeTiles = new Map<Route, TilePoint[]>();
+  for (const { route } of rec.routes) {
+    const points = checkRoute(route, 'route');
+    if (points) routeTiles.set(route, points);
+  }
+  // Chatting pairs: both exist, and somewhere on their rounds they stand close enough to talk (48 px).
+  for (const chat of rec.chats) {
+    const speakers = chat.between.map((id) => rec.routes.find((r) => r.id === id));
+    if (speakers.some((r) => !r)) {
+      fail(def.id, `chat between "${chat.between.join('" and "')}" names a missing watcher`);
+      continue;
+    }
+    const [a, b] = speakers.map((r) => routeTiles.get(r!.route) ?? []);
+    const close = a.some((p) => b.some((q) => Math.hypot(p.tx - q.tx, p.ty - q.ty) * 16 <= 48));
+    if (!close) fail(def.id, `chat between "${chat.between.join('" and "')}": their stops are never within talking distance`);
+    if (chat.talks.length === 0 || chat.talks.some((t) => t.length === 0)) fail(def.id, `chat between "${chat.between.join('" and "')}" has an empty conversation`);
   }
 
   const closedGates: Blocked = (tx, ty) => gateTiles.has(`${tx},${ty}`);
@@ -181,12 +209,13 @@ function validate(def: EraDef): void {
   const any = (...checks: Blocked[]): Blocked => (tx, ty) => checks.some((c) => c(tx, ty));
 
   const quiet: Blocked = (tx, ty) => map.def(tx, ty).noise !== undefined;
-  /** Tiles swept by the patrols that pass `include`: the straight segments between their route points. */
+  /** Tiles swept by the patrols that pass `include`: the boxes between consecutive route points. */
   const lanesOf = (include: (route: string, kind: string) => boolean): Set<string> => {
     const lanes = new Set<string>();
-    for (const { route, kind } of rec.routes) {
-      if (!include(route, kind)) continue;
-      const pts = route.split('').map(at);
+    for (const { route, name, kind } of rec.routes) {
+      if (!include(name, kind)) continue;
+      const pts = routeTiles.get(route);
+      if (!pts) continue;
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
@@ -273,6 +302,21 @@ function validate(def: EraDef): void {
     if (reachable(map, start, at('U'), closedGates)) fail(def.id, 'the lobby is reachable with the tower gate closed');
     for (const m of ['6', '2']) if (reachable(map, start, at(m), closedGates)) fail(def.id, `depot item "${m}" is reachable with the depot door closed`);
     if (reachable(map, start, at('1'), not('P'))) fail(def.id, 'the optical clock is reachable without getting past the blast door');
+    // The depot doorway can't be crossed without splashing, and a street drone always hears it:
+    // the way in is to wait for a train to drown the splash out.
+    const door = at('9');
+    if (reachable(map, start, door, quiet)) fail(def.id, 'the depot door is reachable without splashing through a puddle');
+    if (!def.train) fail(def.id, 'the depot doorway needs a passing train to cover its puddles, but the era has no train');
+    const doorway: TilePoint[] = [];
+    for (let y = door.ty - 2; y <= door.ty + 2; y++) for (let x = door.tx - 2; x <= door.tx + 2; x++) if (map.def(x, y).noise) doorway.push({ tx: x, ty: y });
+    const splash = map.def(doorway[0]?.tx ?? 0, doorway[0]?.ty ?? 0).noise ?? 0;
+    const listening = rec.routes.some((r) => {
+      if (r.kind !== 'drone' || r.group !== 'street') return false;
+      const pts = routeTiles.get(r.route) ?? [];
+      const lane = [...lanesOf((name) => name === r.name)].map((k) => k.split(',').map(Number));
+      return pts.length > 0 && lane.every(([x, y]) => doorway.some((p) => Math.hypot(p.tx - x, p.ty - y) * 16 <= splash));
+    });
+    if (doorway.length === 0 || !listening) fail(def.id, 'no street drone keeps the depot doorway puddles within earshot all along its beat');
   }
   if (def.id === 'ruins') {
     if (reachable(map, start, at('P'), not('K'))) fail(def.id, "Pike's lab is reachable without moving the column");
@@ -297,11 +341,11 @@ function validate(def: EraDef): void {
   }
 
   // A posted sentry only leaves for a war horn: some ally's horn (150 px) has to reach it, or it never moves.
-  for (const { route, posted } of rec.routes) {
-    if (!posted || !map.hasMarker(route[0])) continue;
-    const post = map.marker(route[0]);
+  for (const { route, name, posted } of rec.routes) {
+    const post = routeTiles.get(route)?.[0];
+    if (!posted || !post) continue;
     const heard = rec.allies.some((a) => map.hasMarker(a) && Math.hypot(map.marker(a).tx - post.tx, map.marker(a).ty - post.ty) * 16 <= 150);
-    if (!heard) fail(def.id, `the sentry posted at "${route[0]}" is out of reach of every ally's horn, so nothing can move it`);
+    if (!heard) fail(def.id, `the sentry posted at "${name}" is out of reach of every ally's horn, so nothing can move it`);
   }
   console.log(`${def.id}: ${map.width}x${map.height}, ${rec.points.length} spawns, ${rec.routes.length} patrols, ${rec.areas.length} areas`);
 }

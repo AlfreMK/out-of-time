@@ -28,7 +28,11 @@ export type SfxName =
   | 'zap'
   | 'hack'
   | 'beep'
-  | 'door';
+  | 'door'
+  | 'chime'
+  | 'jingle'
+  | 'trainhorn'
+  | 'clack';
 
 /** One music theme per environment; worlds switch between them as you walk around. */
 export type MusicTheme =
@@ -248,6 +252,10 @@ export class AudioEngine {
   private musicBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private readonly beds = new Map<Ambience, { gain: GainNode; volume: number }>();
+  /** The Yamanote's roar: a low rumble whose loudness the world sets as the train comes and goes. */
+  private trainBed: GainNode | null = null;
+  /** Where the sound effect being played goes (a gain for a distant one), or null for the master bus. */
+  private out: GainNode | null = null;
   private theme: MusicTheme = 'none';
   private playing: MusicTheme = 'none';
   private switchAt = 0;
@@ -271,6 +279,7 @@ export class AudioEngine {
       const data = this.noiseBuffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
       this.createBeds();
+      this.trainBed = this.createRumble();
       this.switchAt = ctx.currentTime;
       this.timer = window.setInterval(() => this.schedule(), 50);
     }
@@ -321,10 +330,47 @@ export class AudioEngine {
     }
   }
 
-  sfx(name: SfxName): void {
+  private createRumble(): GainNode {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 260;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    // Straight to the master bus: music crossfades must not cut the train off.
+    src.connect(filter).connect(gain).connect(this.master!);
+    src.start();
+    return gain;
+  }
+
+  /** How loud the passing train is, 0..1. Called every frame while a train runs on the map. */
+  train(level: number): void {
+    if (!this.ctx || !this.trainBed) return;
+    this.trainBed.gain.setTargetAtTime(level * 0.3, this.ctx.currentTime, 0.12);
+  }
+
+  /** Plays a sound effect; `volume` below 1 makes it sound farther away. */
+  sfx(name: SfxName, volume = 1): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
+    // Quieter sounds go through their own gain on the way to the master bus.
+    if (volume < 1) {
+      this.out = ctx.createGain();
+      this.out.gain.value = Math.max(0, volume);
+      this.out.connect(this.master!);
+    }
+    try {
+      this.play(name, t);
+    } finally {
+      this.out = null;
+    }
+  }
+
+  private play(name: SfxName, t: number): void {
     switch (name) {
       case 'blip':
         this.tone(t, 880, 0.04, 'square', 0.03);
@@ -440,7 +486,42 @@ export class AudioEngine {
         this.noise(t, 0.4, 0.08, 700, 200);
         this.tone(t, 180, 0.35, 'triangle', 0.05, 120);
         break;
+      case 'chime':
+        // The two-note "pin-pon" that opens station announcements in Japan.
+        this.tone(t, 1319, 0.7, 'sine', 0.06);
+        this.tone(t + 0.35, 1047, 0.9, 'sine', 0.06);
+        break;
+      case 'jingle': {
+        // A short, bright platform melody in the style of the ones Japanese stations play as a train
+        // comes in (an original tune: the real ones are copyrighted compositions).
+        const notes = [76, 79, 84, 83, 81, 79, 81, 0, 84, 83, 79, 84];
+        notes.forEach((note, i) => {
+          if (note) this.bell(t + i * 0.2, midiToHz(note), i === notes.length - 1 ? 1.2 : 0.5, 0.05);
+        });
+        break;
+      }
+      case 'trainhorn':
+        // The electronic horn of a modern commuter train: a short two-tone "pwaan".
+        this.tone(t, 523, 0.55, 'sawtooth', 0.025);
+        this.tone(t, 659, 0.55, 'square', 0.015);
+        this.tone(t + 0.5, 523, 0.7, 'sawtooth', 0.025, 494);
+        this.tone(t + 0.5, 659, 0.7, 'square', 0.015, 622);
+        break;
+      case 'clack':
+        // Wheels over a rail joint: "gatan-goton".
+        this.noise(t, 0.08, 0.12, 1400, 400);
+        this.tone(t, 90, 0.1, 'triangle', 0.08, 60);
+        this.noise(t + 0.14, 0.08, 0.1, 1200, 400);
+        this.tone(t + 0.14, 80, 0.1, 'triangle', 0.07, 55);
+        break;
     }
+  }
+
+  /** A vibraphone-like note: a sine with a couple of fast-fading overtones. */
+  private bell(t: number, freq: number, dur: number, vol: number): void {
+    this.tone(t, freq, dur, 'sine', vol);
+    this.tone(t, freq * 2, dur * 0.5, 'sine', vol * 0.3);
+    this.tone(t, freq * 3, dur * 0.25, 'triangle', vol * 0.1);
   }
 
   private tone(t: number, freq: number, dur: number, type: OscillatorType, vol: number, slideTo?: number, bus?: AudioNode): void {
@@ -453,7 +534,7 @@ export class AudioEngine {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(gain).connect(bus ?? this.master!);
+    osc.connect(gain).connect(bus ?? this.out ?? this.master!);
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
@@ -470,7 +551,7 @@ export class AudioEngine {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(filter).connect(gain).connect(bus ?? this.master!);
+    src.connect(filter).connect(gain).connect(bus ?? this.out ?? this.master!);
     src.start(t, Math.random());
     src.stop(t + dur + 0.02);
   }

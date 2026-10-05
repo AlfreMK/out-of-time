@@ -90,13 +90,20 @@ export type TileLook =
   | 'techcrate'
   | 'server'
   | 'bench'
-  | 'metro'
+  | 'station'
   | 'statue'
   | 'lamppost'
   | 'citytree'
   | 'railing'
   | 'viaduct'
   | 'ramen'
+  | 'yakitori'
+  | 'takoyaki'
+  | 'hydrangea'
+  | 'tactile'
+  | 'depotwall'
+  | 'depotfloor'
+  | 'maglev'
   | 'tamagaki'
   | 'toro'
   | 'ema'
@@ -241,10 +248,16 @@ export const FUTURE_TILES: TileSet = {
   '.': { look: 'asphalt', solid: false },
   ':': { look: 'sidewalk', solid: false },
   '=': { look: 'plaza', solid: false },
+  // Yellow tactile paving (tenji blocks, invented in Japan in 1965) leading from the station.
+  '"': { look: 'tactile', solid: false },
   '#': { look: 'neonblock', solid: true },
   g: { look: 'glasstower', solid: true },
   _: { look: 'lobby', solid: false },
   '-': { look: 'labfloor', solid: false },
+  // The maglev depot: a steel shed with a concrete floor and a train parked on its guideway.
+  w: { look: 'depotwall', solid: true },
+  f: { look: 'depotfloor', solid: false },
+  n: { look: 'maglev', solid: true },
   d: { look: 'doorway', solid: false },
   '~': { look: 'canal', solid: true, low: true, seeThrough: true },
   '+': { look: 'steelbridge', solid: false },
@@ -255,10 +268,16 @@ export const FUTURE_TILES: TileSet = {
   v: { look: 'vending', solid: true },
   // A ramen stall (yatai) near the Yamanote tracks.
   k: { look: 'ramen', solid: true },
+  // More yatai beside it: yakitori skewers over charcoal, and takoyaki on a dimpled griddle.
+  y: { look: 'yakitori', solid: true },
+  q: { look: 'takoyaki', solid: true },
+  // Hydrangeas (ajisai), which bloom all over Tokyo in the June rainy season.
+  i: { look: 'hydrangea', solid: true, low: true },
   c: { look: 'techcrate', solid: true, low: true },
   s: { look: 'server', solid: true },
   u: { look: 'table', solid: true, low: true },
-  m: { look: 'metro', solid: true },
+  // A Yamanote Line station hall built against the viaduct (its platforms are up on the tracks).
+  m: { look: 'station', solid: true },
   o: { look: 'statue', solid: true },
   b: { look: 'bench', solid: true, low: true },
   l: { look: 'lamppost', solid: true, low: true },

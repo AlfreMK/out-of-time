@@ -75,6 +75,8 @@ export class Game {
       if (this.fadeAlpha >= 1 && this.pending) {
         this.scene = this.pending;
         this.pending = null;
+        // A train rumbling in the world left behind mustn't follow into the next scene.
+        this.audio.train(0);
         this.scene.enter?.();
         this.fadeDir = -1;
       }
@@ -87,6 +89,8 @@ export class Game {
     if (this.scene && this.fadeDir !== 1) this.scene.update(dt);
 
     this.screen.beginFrame();
+    // The scene redraws its item bar (if it has one) and reports where it is.
+    this.input.hotbar = null;
     this.scene?.draw(this.screen, this.time);
     if (this.fadeAlpha > 0) {
       this.screen.ui.fillStyle = `rgba(0,0,0,${this.fadeAlpha})`;

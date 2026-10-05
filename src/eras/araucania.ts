@@ -215,8 +215,19 @@ export const ARAUCANIA: EraDef = {
     // --- Spanish soldiers ---
     // The gate sentries won't leave their post for a stone in the grass; only a trutruka (an attack!) moves them.
     const gateGuard = { kind: 'soldier', facing: 'left', sweep: 0.5, range: 92, caught: SOLDIER_CAUGHT, posted: true, onHoldPost: pebbleHint } as const;
-    w.watcher({ ...gateGuard, route: 'F' });
-    w.watcher({ ...gateGuard, route: 'H' });
+    w.watcher({ ...gateGuard, route: 'F', id: 'gateN' });
+    w.watcher({ ...gateGuard, route: 'H', id: 'gateS' });
+    // They pass the time talking, but posted sentries keep their eyes on the woods.
+    w.chat({
+      between: ['gateN', 'gateS'],
+      distracted: false,
+      talks: [
+        ['¿Has oído las trutrucas en el bosque?', 'Si suenan, el capitán quiere que miremos al monte.', 'Pues que no suenen, que tengo hambre.', 'Calla y vigila.'],
+        ['Dicen que el gobernador está en Concepción.', 'Con el oro de los lavaderos de Quilacoya.', 'Oro para él. Para nosotros, charqui duro.', 'Y este sol de diciembre.'],
+        ['¿Te acuerdas del mozo de caballos del gobernador?', '¿El muchacho Lautaro? Se escapó hace tiempo.', 'Montaba mejor que tú.', 'Mejor que todos. Eso es lo que me preocupa.'],
+        ['Echo de menos Extremadura.', 'Allí al menos el vino era bueno.', 'Aquí ni vino, ni pan de trigo.', 'Ni paz. Vigila la puerta.'],
+      ],
+    });
     w.watcher({ kind: 'soldier', route: 'IJ', wait: 1.6, caught: SOLDIER_CAUGHT });
     w.watcher({ kind: 'soldier', route: 'KN', wait: 1.8, caught: SOLDIER_CAUGHT });
     w.watcher({ kind: 'soldier', route: 'O', facing: 'left', sweep: 1.0, range: 110, caught: SOLDIER_CAUGHT });

@@ -410,5 +410,7 @@ export class Decor extends Entity {
     this.x = x;
     this.y = y;
     this.kind = kind;
+    // Passers-by are people: you walk round them, not through them.
+    if (kind === 'pedestrian') this.solid = { hw: 4, hh: 3 };
   }
 }

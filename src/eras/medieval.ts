@@ -228,8 +228,41 @@ export const MEDIEVAL: EraDef = {
     });
 
     // --- Guards and Brutus ---
-    w.watcher({ kind: 'guard', route: 'O', facing: 'down', sweep: 0.45, range: 80, caught: GUARD_CAUGHT });
-    w.watcher({ kind: 'guard', route: 'AC', wait: 1.6, caught: GUARD_CAUGHT });
+    w.watcher({ kind: 'guard', route: 'O', id: 'door', facing: 'down', sweep: 0.45, range: 80, caught: GUARD_CAUGHT });
+    // The yard patrol stops by the keep door for a chat on each pass (the map has no markers left, hence the tile).
+    w.watcher({ kind: 'guard', route: ['A', [24, 10], 'C', [24, 10]], id: 'yard', wait: 1.6, caught: GUARD_CAUGHT });
+    // While they gossip they only have eyes for each other, and the yard is open for a while.
+    // The earpiece translates real conversations, so this comes through as accented English.
+    w.chat({
+      between: ['yard', 'door'],
+      distracted: true,
+      talks: [
+        [
+          'You saw ze old Dom burn in April?',
+          'Ze whole sky was red. I smelled it for weeks.',
+          'Now ze Archbishop wants a new one. Bigger.',
+          'Ze first stone went down in August. We will never see it finished.',
+        ],
+        [
+          'Zat Dominican, Brother Albert... he talks to stones.',
+          'He writes about stones. Minerals, he calls zem.',
+          'And his young friend, Thomas? Never says a word.',
+          'Ze students call him ze Dumb Ox.',
+        ],
+        [
+          "Ulrich's dog bit ze baker's boy again.",
+          'Brutus? He bites everyone. Unless you have bread.',
+          'Bread?',
+          'Throw him rye bread and he forgets ze whole world.',
+        ],
+        [
+          'My feet hurt. Twelve rounds of zis yard today.',
+          "Stop complaining. Ze Archbishop's soup is hot tonight.",
+          "Ze Archbishop's soup is water with a cabbage in it.",
+          'Back to it, before ze castellan sees us.',
+        ],
+      ],
+    });
     w.watcher({ kind: 'guard', route: 'FH', wait: 1.8, caught: GUARD_CAUGHT });
     w.watcher({ kind: 'guard', route: 'IJ', wait: 2.2, caught: GUARD_CAUGHT });
     w.watcher({
@@ -380,7 +413,7 @@ async function talkToBaker(w: WorldApi): Promise<void> {
     w.sfx('pickup');
     w.toast(`Got: ${ITEMS.bread.name}`);
     w.save();
-    await w.say('Rye Bread: press {throw} to throw it in front of you. Animals love it. Press {cycle} to switch between items.');
+    await w.say('Rye Bread: press {throw} to throw it in front of you, or hold {throw} to throw it farther. Animals love it. Switch items with {cycle}.');
     return;
   }
   if (!w.flag(Flag.MedBakerLore)) {
@@ -474,7 +507,7 @@ async function talkToKid(w: WorldApi): Promise<void> {
   w.toast(`Got: ${ITEMS.pebbles.name}`);
   w.save();
   await w.say(
-    'Pebbles: press {throw} to throw one in front of you. Guards walk over to check out the noise.',
+    'Pebbles: press {throw} to throw one in front of you, or hold {throw} to throw it farther. Guards walk over to check out the noise.',
     [Speaker.Jakob, "Oh, and zere's a hole in ze castle's east wall, behind ze bushes. I sneak in for apples."],
   );
 }

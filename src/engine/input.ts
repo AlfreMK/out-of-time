@@ -7,6 +7,7 @@ export type Action =
   | 'sneak'
   | 'throw'
   | 'cycle'
+  | 'prev'
   | 'pause'
   | 'back'
   | 'mute'
@@ -39,7 +40,7 @@ const KEYMAP: Record<string, Action[]> = {
 
 /**
  * Standard gamepad layout (Xbox / PlayStation / most others in browsers):
- * 0 A/Cross, 1 B/Circle, 2 X/Square, 3 Y/Triangle, 6 LT/L2, 7 RT/R2,
+ * 0 A/Cross, 1 B/Circle, 2 X/Square, 3 Y/Triangle, 4 LB/L1, 5 RB/R1, 6 LT/L2, 7 RT/R2,
  * 8 View/Create, 9 Menu/Options, 12-15 D-pad.
  */
 const PAD_BUTTONS: Array<[number, Action[]]> = [
@@ -47,6 +48,8 @@ const PAD_BUTTONS: Array<[number, Action[]]> = [
   [1, ['sneak', 'back']],
   [2, ['throw']],
   [3, ['cycle']],
+  [4, ['prev']],
+  [5, ['cycle']],
   [6, ['sneak']],
   [7, ['throw']],
   [8, ['pause']],
@@ -58,11 +61,12 @@ const PAD_BUTTONS: Array<[number, Action[]]> = [
 ];
 
 const GLYPHS: Record<Device, Partial<Record<Action, string>>> = {
-  keyboard: { interact: 'E', sneak: 'Shift', throw: 'F', cycle: 'Q', pause: 'Esc', back: 'Esc' },
-  xbox: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'Y', pause: 'Menu', back: 'B' },
-  playstation: { interact: '✕', sneak: '○', throw: '□', cycle: '△', pause: 'Options', back: '○' },
-  // The on-screen buttons are laid out and lettered like a gamepad (see TouchControls).
-  touch: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'Y', pause: 'Menu', back: 'Menu' },
+  // Items are picked with the number keys (Q steps to the next one).
+  keyboard: { interact: 'E', sneak: 'Shift', throw: 'F', cycle: '1-3', pause: 'Esc', back: 'Esc' },
+  xbox: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'LB/RB', prev: 'LB', pause: 'Menu', back: 'B' },
+  playstation: { interact: '✕', sneak: '○', throw: '□', cycle: 'L1/R1', prev: 'L1', pause: 'Options', back: '○' },
+  // The on-screen buttons are laid out and lettered like a gamepad (see TouchControls); items can also be tapped.
+  touch: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'Y', prev: 'Y', pause: 'Menu', back: 'Menu' },
 };
 
 /** How movement is described in tutorial text ({move}). */
@@ -77,8 +81,21 @@ const DEADZONE = 0.22;
 
 const padDevice = (pad: Gamepad): Device => (/playstation|dualsense|dualshock|054c|wireless controller/i.test(pad.id) ? 'playstation' : 'xbox');
 
+/** Where the item bar is drawn, in UI pixels, so the touch controls can make its slots tappable. */
+export interface HotbarRect {
+  x: number;
+  y: number;
+  slotW: number;
+  h: number;
+  count: number;
+}
+
 export class Input {
   device: Device = 'keyboard';
+  /** Set by the scene that draws an item bar, every frame it does (null otherwise). */
+  hotbar: HotbarRect | null = null;
+  /** A slot picked directly (number key or tap), until the game reads it. */
+  private slotPick: number | null = null;
   private readonly keysHeld = new Set<Action>();
   private padHeld = new Set<Action>();
   private readonly touchHeld = new Set<Action>();
@@ -100,6 +117,12 @@ export class Input {
       const actions = KEYMAP[e.code];
       this.notifyGesture();
       if (!e.repeat && /^[a-z]$/i.test(e.key)) this.typeLetter(e.key.toLowerCase());
+      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+      if (digit && !e.repeat) {
+        this.device = 'keyboard';
+        this.slotPick = Number(digit[1]) - 1;
+        return;
+      }
       if (!actions) return;
       e.preventDefault();
       this.device = 'keyboard';
@@ -211,6 +234,18 @@ export class Input {
     return this.pressed.has(action);
   }
 
+  /** Picks an item slot directly (a tap on the item bar). */
+  touchSlot(index: number): void {
+    this.slotPick = index;
+  }
+
+  /** The item slot picked with a number key or a tap since the last call, if any. */
+  pickedSlot(): number | null {
+    const slot = this.slotPick;
+    this.slotPick = null;
+    return slot;
+  }
+
   /** Consumes a press so other systems in the same frame don't react to it too. */
   consume(action: Action): boolean {
     const had = this.pressed.has(action);
@@ -243,7 +278,7 @@ export class Input {
   /** Replaces {interact}, {sneak}, {throw}, {cycle} and {pause} with the current device's buttons, and {move} with its movement controls. */
   format(text: string): string {
     return text
-      .replace(/\{(interact|sneak|throw|cycle|pause|back)\}/g, (_, action: Action) => this.glyph(action))
+      .replace(/\{(interact|sneak|throw|cycle|prev|pause|back)\}/g, (_, action: Action) => this.glyph(action))
       .replace(/\{move\}/g, MOVE_HINT[this.device]);
   }
 

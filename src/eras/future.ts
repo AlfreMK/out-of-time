@@ -31,6 +31,8 @@ export const FUTURE: EraDef = {
   id: 'future',
   ...ERA_INFO.future,
   music: 'cyber',
+  // The Yamanote Line runs along the viaduct; while a train passes, its roar covers splashes and steps.
+  train: true,
   musicZones: [
     { area: { x: 27, y: 1, w: 20, h: 16 }, theme: 'tower' },
     { area: { x: 1, y: 1, w: 20, h: 14 }, theme: 'tower' },
@@ -49,7 +51,7 @@ export const FUTURE: EraDef = {
       const steps: string[] = [];
       if (!w.flag(Flag.FutCanHack)) {
         if (w.has('deck')) steps.push('bring the cyberdeck back to Yuki');
-        else steps.push(w.flag(Flag.FutDepotOpen) ? "get Yuki's cyberdeck from the maglev depot" : 'the maglev depot door needs a four-digit code: someone in the plaza south of the canal may know it');
+        else steps.push(w.flag(Flag.FutDepotOpen) ? "get Yuki's cyberdeck from the maglev depot (splash through its doorway while a train roars past)" : 'the maglev depot door needs a four-digit code: someone in the plaza south of the canal may know it');
       } else if (!w.has('clock')) {
         if (!w.flag(Flag.FutTowerOpen)) steps.push('hack the junction box in the alley to get into the Chronos Corp tower');
         else if (!w.flag(Flag.FutLabOpen)) steps.push('hack the security terminal in the tower lobby to open the lab');
@@ -113,6 +115,59 @@ export const FUTURE: EraDef = {
         );
       },
     });
+    // Two more yatai beside the ramen stall (the map has no markers left, so their cooks stand by tile).
+    w.npc({
+      marker: [21, 29],
+      look: 'vendor',
+      name: Speaker.YakitoriCook,
+      talk: (w) =>
+        w.say(
+          [Speaker.YakitoriCook, 'Negima, tsukune, kawa! Chicken and leek, meatballs, crispy skin, all grilled over binchōtan.'],
+          [Speaker.YakitoriCook, 'White charcoal: burns hot and clean, no smoke taste. Well, almost no smoke.'],
+          [Speaker.Andrew, "(Smells incredible. I doubt a card from 2026 works here, though.)"],
+          ...(w.flag(Flag.PipAboard) ? ([[Speaker.Pip, '*stares at the skewers, drooling on the counter*']] as const) : []),
+        ),
+    });
+    w.npc({
+      marker: [24, 29],
+      look: 'vendor',
+      name: Speaker.TakoyakiVendor,
+      talk: (w) =>
+        w.say(
+          [Speaker.TakoyakiVendor, 'Takoyaki! Octopus in batter, turned with a pick until every one is a perfect ball.'],
+          [Speaker.TakoyakiVendor, 'They come from Osaka, back in the 1930s. Tokyo pretends it invented them anyway.'],
+          [Speaker.Andrew, '(Crispy outside, molten inside. Some things are worth a time machine.)'],
+        ),
+    });
+    // "No entry" boards at both bridges: north of the canal is Chronos Corp's district, hence the drones.
+    for (const spot of [[12, 27], [33, 27]] as const) {
+      w.decor(spot, 'restricted');
+      w.inspect(spot, 'Sign', (w) =>
+        w.say(
+          'Tachiiri kinshi: NO ENTRY. RESTRICTED AREA, CHRONOS CORP. DRONE PATROLS IN OPERATION.',
+          [Speaker.Andrew, "So everything north of the canal is Chronos Corp's. That's why the drones only patrol over there."],
+        ),
+      );
+    }
+    // People waiting out the rain under their umbrellas, a couple of them at Hachikō, the city's classic
+    // meeting spot. Talk to them and they brush you off, politely or not.
+    const passersBy: Array<readonly [readonly [number, number], Line[]]> = [
+      [[23, 34], [[Speaker.PasserBy, "Sorry, I'm waiting for someone. We always meet at Hachikō."]]],
+      [[25, 34], [[Speaker.PasserBy, '(Doesn\'t look up from the visor.) ...Busy.']]],
+      [[11, 33], [[Speaker.PasserBy, "Sumimasen, I'll miss my train. Ask someone else."]]],
+      [[20, 35], [[Speaker.PasserBy, 'Please, not now. My umbrella is dripping on you anyway.']]],
+      [
+        [30, 34],
+        [
+          [Speaker.PasserBy, "Don't bother. Everything north of the canal belongs to Chronos. Even the rain feels branded."],
+          [Speaker.Andrew, '(Charming.)'],
+        ],
+      ],
+    ];
+    for (const [spot, lines] of passersBy) {
+      w.decor(spot, 'pedestrian');
+      w.inspect(spot, 'Passer-by', (w) => w.say(...lines));
+    }
     w.npc({
       marker: 'Y',
       look: 'citizen',
@@ -130,6 +185,8 @@ export const FUTURE: EraDef = {
           [Speaker.Commuter, 'Hear that? The Yamanote Line. Round and round the city, all night long.'],
           [Speaker.Commuter, 'It became a full loop in 1925, when they linked Kanda and Ueno. Before that it was just a big C.'],
           [Speaker.Commuter, 'Older than my great-grandparents, and still on time. Everything else in this city belongs to Chronos Corp now.'],
+          [Speaker.Commuter, "And loud. When a train goes over the viaduct you can't hear yourself think. Even the drones' microphones give up."],
+          [Speaker.Andrew, '(A few seconds of cover, every time a train comes by. Good to know.)'],
         );
       },
     });
@@ -158,6 +215,26 @@ export const FUTURE: EraDef = {
         ...(w.flag(Flag.PipAboard) ? ([[Speaker.Pip, '*sniffs the bronze dog, deeply suspicious*']] as const) : []),
       ),
     );
+
+    // The maglev parked in the depot (by tile: the map has no markers left).
+    w.inspect([5, 2], 'Maglev', (w) =>
+      w.say(
+        'An L-series maglev car, parked on its U-shaped guideway.',
+        [Speaker.Andrew, 'Tokyo to Nagoya in about forty minutes, floating some ten centimeters over the track on superconducting magnets.'],
+        [Speaker.Andrew, 'And whatever they wind those magnets from is stored in here somewhere.'],
+      ),
+    );
+
+    // The Yamanote station hall against the viaduct (the map has no markers left, so by its tiles).
+    for (const tile of [[17, 36], [18, 36]] as const) {
+      w.inspect(tile, 'Station', (w) =>
+        w.say(
+          'A Yamanote Line station, built right against the viaduct. Its platforms are up on the tracks.',
+          [Speaker.Andrew, "The yellow-green stripe is the line's color: uguisu, the green of the Japanese bush warbler."],
+          [Speaker.Andrew, 'Every time a train is due, the station chimes, announces it and plays a little melody. Hard to miss.'],
+        ),
+      );
+    }
 
     // --- Security ---
     const towerGate = w.gate({ marker: '3', look: 'laser', openFlag: Flag.FutTowerOpen });
@@ -246,6 +323,8 @@ export const FUTURE: EraDef = {
     w.watcher({ kind: 'drone', route: 'IJ', wait: 1.4, group: 'depot', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
     w.watcher({ kind: 'camera', route: 'K', facing: 'left', group: 'depot', caught: CAMERA_CAUGHT });
     w.watcher({ kind: 'drone', route: 'LQ', wait: 2.0, group: 'street', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
+    // Hovers back and forth in front of the depot: always close enough to hear a splash in its doorway.
+    w.watcher({ kind: 'drone', route: [[9, 18], [14, 18]], wait: 1.2, group: 'street', caught: DRONE_CAUGHT, barks: DRONE_BARKS });
 
     // --- Parts ---
     w.pickup({
@@ -276,9 +355,15 @@ export const FUTURE: EraDef = {
         ),
     });
     w.trigger({
-      area: { x: 11, y: 15, w: 2, h: 1 },
+      area: { x: 11, y: 16, w: 2, h: 1 },
       once: Flag.FutDepotHint,
-      run: (w) => w.say([Speaker.Andrew, 'The maglev depot. Puddles everywhere, and drones with microphones. Splashing will carry even if I sneak.']),
+      run: (w) =>
+        w.say(
+          [Speaker.Andrew, 'The maglev depot. Puddles everywhere, and drones with microphones. Splashing will carry even if I sneak.'],
+          [Speaker.Andrew, "There's no way to the door without splashing, and that drone out front would hear it."],
+          [Speaker.Andrew, 'Unless a Yamanote train drowns it out. I just have to time it.'],
+          'While a train passes (watch the train board under the place name), your footsteps and splashes make no sound.',
+        ),
     });
 
     for (const marker of ['S', 'R', 'X', 'Z']) w.checkpoint(marker);

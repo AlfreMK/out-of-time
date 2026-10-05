@@ -1,6 +1,6 @@
 import type { Barks, Facing, WatcherKind, WatcherSpec } from '../../eras/types.ts';
 import { angleDiff } from '../../engine/random.ts';
-import { findPath } from '../pathfinding.ts';
+import { findPath, smoothPath } from '../pathfinding.ts';
 import { TILE, tileCenter, type TilePoint } from '../tilemap.ts';
 import type { World } from '../world.ts';
 import { Entity } from './entity.ts';
@@ -86,6 +86,14 @@ const SEARCH_TIME = 2.6;
 const HORN_SEARCH_TIME = 8;
 const HORN_SWEEP = 0.6;
 
+/** Chatting with their eyes off the job: a shorter, narrower cone (see `ChatSpec.distracted`). */
+const CHAT_RANGE = 0.6;
+const CHAT_FOV = 0.5;
+
+/** Going to look at a noise or back to their post, they steer clear of the player's spot (tiles) when there's another way. */
+const AVOID_RADIUS = 4;
+const AVOID_COST = 3;
+
 /** Distance under which being "hidden" stops working — they'd bump into you. */
 const POINT_BLANK = 18;
 const TOUCH = 11;
@@ -115,6 +123,13 @@ export class Watcher extends Entity {
   asleep = false;
   /** Current speech bubble. */
   bark: { text: string; time: number } | null = null;
+  /** Who this watcher is chatting with right now (set by a `Chat`). */
+  chatPartner: Watcher | null = null;
+  /** Whether the current chat takes its eyes off the job. */
+  chatDistracted = false;
+  /** 0..1: how far the cone has narrowed for a distracted chat (eases in and out so it reads on screen). */
+  private chatBlend = 0;
+  /** Full vision range; `viewRange` is what it actually sees right now. */
   readonly range: number;
   readonly fov: number;
   private readonly tuning: KindTuning;
@@ -164,6 +179,8 @@ export class Watcher extends Entity {
     this.suspicion = 0;
     this.food = null;
     this.bark = null;
+    this.chatPartner = null;
+    this.chatBlend = 0;
     this.angle = this.route.length > 1 ? this.angleToward(this.route[1]) : this.postAngle;
     this.lookCenter = this.angle;
     this.asleep = this.spec.dormant === true;
@@ -192,6 +209,16 @@ export class Watcher extends Entity {
     return this.patrol;
   }
 
+  /** Vision range right now: shorter while chatting distracted. */
+  get viewRange(): number {
+    return this.range * (1 - (1 - CHAT_RANGE) * this.chatBlend);
+  }
+
+  /** Field of view right now: narrower while chatting distracted. */
+  get viewFov(): number {
+    return this.fov * (1 - (1 - CHAT_FOV) * this.chatBlend);
+  }
+
   get isStationary(): boolean {
     return this.route.length === 1 || this.kind === 'camera';
   }
@@ -218,6 +245,8 @@ export class Watcher extends Entity {
       if (this.bark.time <= 0) this.bark = null;
     }
     if (world.controlsLocked) return;
+    const blendTarget = this.chatPartner && this.chatDistracted ? 1 : 0;
+    this.chatBlend += Math.max(-dt * 3, Math.min(dt * 1.5, blendTarget - this.chatBlend));
     this.barkCooldown = Math.max(0, this.barkCooldown - dt);
     if (this.asleep) {
       this.suspicion = 0;
@@ -242,7 +271,7 @@ export class Watcher extends Entity {
 
     const sawBefore = this.suspicion > 0;
     if (!god && this.watching && this.canSee(world)) {
-      const closeness = 1 - dist / this.range;
+      const closeness = 1 - dist / this.viewRange;
       this.suspicion += dt * (1.2 + closeness * 3) * this.tuning.alertness;
       this.turnToward(Math.atan2(player.y - this.y, player.x - this.x), dt * 2);
       if (!sawBefore) {
@@ -262,6 +291,12 @@ export class Watcher extends Entity {
     return this.kind === 'camera' || this.kind === 'drone' || this.kind === 'bot';
   }
 
+  /** Shows a line of a conversation in the speech bubble. */
+  speak(text: string, seconds: number): void {
+    this.bark = { text, time: seconds };
+    this.barkCooldown = 1.2;
+  }
+
   private say(kind: keyof Barks): void {
     const lines = this.spec.barks?.[kind] ?? BARKS[this.kind]?.[kind];
     if (!lines || lines.length === 0 || this.barkCooldown > 0) return;
@@ -273,9 +308,15 @@ export class Watcher extends Entity {
     switch (this.state) {
       case 'pause': {
         this.timer += dt;
+        const partner = this.chatPartner;
+        if (partner && this.chatDistracted) {
+          this.turnToward(Math.atan2(partner.y - this.y, partner.x - this.x), dt);
+          break;
+        }
         const center = this.isStationary ? this.postAngle : this.lookCenter;
         this.turnToward(center + Math.sin(this.timer * 1.3) * this.sweep, dt);
-        if (!this.isStationary && this.timer >= this.wait) {
+        // A patrol stays put until the conversation is over.
+        if (!partner && !this.isStationary && this.timer >= this.wait) {
           this.routeIndex = (this.routeIndex + 1) % this.route.length;
           this.goTo(this.route[this.routeIndex], world);
           this.state = 'patrol';
@@ -304,7 +345,7 @@ export class Watcher extends Entity {
         this.turnToward(this.lookCenter + Math.sin(this.timer * 2) * this.searchSweep, dt);
         if (this.timer > this.searchTime) {
           this.say('giveUp');
-          this.goTo(this.route[this.routeIndex], world);
+          this.goTo(this.route[this.routeIndex], world, true);
           this.state = 'return';
         }
         break;
@@ -372,7 +413,7 @@ export class Watcher extends Entity {
       world.game.audio.sfx(this.isMachine ? 'beep' : 'suspect');
       this.say('investigate');
     }
-    this.goTo(target, world);
+    this.goTo(target, world, true);
     this.state = this.path.length > 0 ? 'investigate' : 'look';
     this.timer = 0;
     this.lookCenter = Math.atan2(y - this.y, x - this.x);
@@ -383,20 +424,44 @@ export class Watcher extends Entity {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > this.range) return false;
+    if (dist > this.viewRange) return false;
     if (player.hidden && dist > POINT_BLANK) return false;
-    if (Math.abs(angleDiff(this.angle, Math.atan2(dy, dx))) > this.fov / 2) return false;
+    if (Math.abs(angleDiff(this.angle, Math.atan2(dy, dx))) > this.viewFov / 2) return false;
     return world.map.lineOfSight(this.x, this.y - 4, player.x, player.y - 4);
   }
 
-  private goTo(target: TilePoint, world: World): void {
+  /**
+   * Plans a walk to a tile: the shortest way, straightened into direct lines. With `avoidPlayer`
+   * (looking into a noise, heading back), detours that keep away from the player win over a walk
+   * that brushes past them, so a thrown pebble doesn't bring the guard right to the thrower.
+   */
+  private goTo(target: TilePoint, world: World, avoidPlayer = false): void {
     const map = world.map;
     const here = this.tileAt(this.x, this.y);
     const passable = (tx: number, ty: number): boolean => !map.isSolid(tx, ty) && !map.def(tx, ty).ledge;
-    this.path = findPath(here, target, map.width, map.height, passable) ?? [];
+    const hero = this.tileAt(world.hero.x, world.hero.y);
+    const cost = avoidPlayer
+      ? (tx: number, ty: number): number => Math.max(0, AVOID_RADIUS - Math.hypot(tx - hero.tx, ty - hero.ty)) * AVOID_COST
+      : undefined;
+    const path = findPath(here, target, map.width, map.height, passable, { cost }) ?? [];
     // Don't walk into a wall when the goal itself is solid (e.g. a pebble on a crate).
-    const last = this.path[this.path.length - 1];
-    if (last && !passable(last.tx, last.ty)) this.path.pop();
+    const last = path[path.length - 1];
+    if (last && !passable(last.tx, last.ty)) path.pop();
+    // Only straighten what doesn't cut back toward the player: each shortcut has to stay as clear of them.
+    const clear = (a: TilePoint, b: TilePoint): boolean =>
+      map.straightWalk(a, b, passable) && (!cost || this.segmentCost(a, b, cost) <= Math.max(cost(a.tx, a.ty), cost(b.tx, b.ty)));
+    this.path = smoothPath(here, path, clear);
+  }
+
+  /** The highest extra cost of any tile a straight walk from `a` to `b` crosses. */
+  private segmentCost(a: TilePoint, b: TilePoint, cost: (tx: number, ty: number) => number): number {
+    const steps = Math.max(Math.abs(b.tx - a.tx), Math.abs(b.ty - a.ty)) * 2;
+    let worst = 0;
+    for (let i = 0; i <= steps; i++) {
+      const t = steps === 0 ? 0 : i / steps;
+      worst = Math.max(worst, cost(Math.round(a.tx + (b.tx - a.tx) * t), Math.round(a.ty + (b.ty - a.ty) * t)));
+    }
+    return worst;
   }
 
   /** Moves along the current path. Returns true when there is nothing left to walk. */

@@ -35,8 +35,8 @@ Keyboard, gamepads (Xbox, PlayStation and other standard controllers) and touch 
 | Move | WASD / Arrows | Left stick / D-pad | Left stick / D-pad | Joystick (drag anywhere on the left half) |
 | Interact / advance dialogue | E / Space / Enter | A | ✕ | A |
 | Sneak (silent footsteps) | Hold Shift | Hold B or LT (or tilt the stick gently) | Hold ○ or L2 (or tilt gently) | Hold B (or drag the joystick gently) |
-| Use selected item | F | X or RT | □ or R2 | X |
-| Switch item | Q | Y | △ | Y |
+| Use selected item (hold to throw farther) | F | X or RT | □ or R2 | X |
+| Pick an item in the item bar | 1-3 / Q / mouse wheel | LB / RB (or Y) | L1 / R1 (or △) | Tap it in the bar (or Y) |
 | Pause (journal, goal, inventory) | Esc / P | Menu | Options | Menu |
 | Mute | M | | | Pause menu → Sound |
 
@@ -56,7 +56,9 @@ There is no combat. Enemies are moving puzzles:
 
 - **Vision cones** are drawn on the ground. Staying inside one fills the suspicion meter; when it's full you're caught and sent back to the last checkpoint.
 - **Cover** (ferns, bushes, quila thickets, dark alleys) hides you, unless an enemy is right next to you.
-- **Noise matters.** Normal footsteps make a small noise ring, sneaking is silent, and bones and puddles always make noise. Guards and robots walk over to investigate sounds and tell you what they think in speech bubbles.
+- **Noise matters.** Normal footsteps make a small noise ring, sneaking is silent, and bones and puddles always make noise. Guards and robots walk over to investigate sounds and tell you what they think in speech bubbles. They walk straight there, and take a detour rather than brush right past you.
+- **Items** sit in a bar at the bottom center. A tap of the use button tosses pebbles or bread a short way; hold it to wind up a long throw (a marker shows where it will land).
+- **Guards chat.** Some pairs stop to talk when their rounds bring them together; while they gossip they only have eyes for each other, which opens a window to slip past. Posted sentries keep watching while they talk.
 
 ### 1. Late Cretaceous: Hell Creek, 66.5 million years ago (observe and hide)
 
@@ -68,7 +70,7 @@ There is no combat. Enemies are moving puzzles:
 ### 2. Middle Ages: Cologne, 1248 (use objects)
 
 - Help the villagers in the Archbishop's forest south of the village: sneak past the forester, his hound and a sleeping wild boar to fetch firewood for Agnes the baker (for rye bread, which bribes Brutus at the bell-founder's yard) and Jakob's spinning top from the mill (for his lucky pebbles and a secret).
-- Bribe a dog with the bread so the bell-founder can cast a bronze gear, and throw pebbles to lure guards away from their posts.
+- Bribe a dog with the bread so the bell-founder can cast a bronze gear, and throw pebbles to lure guards away from their posts. The yard patrol stops to gossip with the keep's door guard (about the cathedral fire, Brother Albert and Ulrich's dog).
 - Meet **Albertus Magnus** in his tower lab (answer his riddle about mercury) and his student **Thomas Aquinas**.
 - Escape through the archers' gallery while crossbowmen shoot down from balconies on the upper floor, then climb onto a landing outside the wall and jump down. It's one-way, so the exit can't be used as an entrance.
 - Locked area: a sealed crypt with a glowing panel that clearly doesn't belong in 1248.
@@ -82,8 +84,8 @@ There is no combat. Enemies are moving puzzles:
 
 ### 4. Neo-Tokyo, 2087 (manipulate systems)
 
-- A neon-lit Tokyo night in the June rainy season: Hachikō's statue, a Shinto shrine with a big torii and ema plaques, Yamanote Line trains rolling along a viaduct, rows of vending machines, a giant virtual-idol hologram over the avenue, and the Chronos Corp tower.
-- **Yuki**, a hacker who leaked Chronos's files, recognizes you. Recover her cyberdeck from the maglev depot (its door code is hidden in plain sight, between the shrine and a talkative commuter) and she rigs your multitool to hack terminals (switching off cameras, drones and bots) and gives you a power cell, which opens the crypt in 1248. Avoid puddles that splash.
+- A neon-lit Tokyo night in the June rainy season: Hachikō's statue, a Shinto shrine with a big torii and ema plaques, Yamanote Line trains rolling along a viaduct (the station chimes, announces them and plays a little melody as each one comes in), rows of vending machines, street stalls (ramen, yakitori, takoyaki), hydrangeas in bloom, a giant virtual-idol hologram over the avenue, and the Chronos Corp tower beyond the canal, where "no entry" boards mark the start of its drone-patrolled district.
+- **Yuki**, a hacker who leaked Chronos's files, recognizes you. Recover her cyberdeck from the maglev depot (its door code is hidden in plain sight, between the shrine and a talkative commuter) and she rigs your multitool to hack terminals (switching off cameras, drones and bots) and gives you a power cell, which opens the crypt in 1248. Avoid puddles that splash, or wait for a Yamanote train: while one thunders over the viaduct (a board under the place name counts down to the next one), nobody hears your steps.
 - Steal an optical lattice clock (the fix for the broken year display; Pip has to ram a jammed blast door behind the lab's laser) and superconducting tape.
 
 ### 5. The Long Drought: Madrid, 2240 (combine everything)
@@ -134,6 +136,8 @@ Era files are declarative plus async story scripts, and they only talk to the `W
 
 ```ts
 w.watcher({ kind: 'guard', route: 'AC', caught: GUARD_CAUGHT });
+w.watcher({ kind: 'guard', route: ['A', [24, 10], 'C'], id: 'yard', caught: GUARD_CAUGHT }); // [tx, ty] stops when markers run out
+w.chat({ between: ['yard', 'door'], distracted: true, talks: [['Line one', 'Reply', ...]] });
 w.ally({ marker: 'A', look: 'weichafe', name: 'Scout', talk: scoutLines });
 w.trigger({ area: 'L', block: true, when: (w) => !w.has('shield'), run: (w) => w.say(['Andrew', 'Crossbow bolts everywhere!']) });
 ```

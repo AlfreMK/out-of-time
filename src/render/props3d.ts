@@ -426,6 +426,44 @@ function metroLabel(): THREE.CanvasTexture {
   return metroTexture;
 }
 
+/** Draws a line of text at `size` px, shrinking it until it fits `maxWidth` (fonts differ between devices). */
+export function fitText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, bold: boolean, maxWidth: number): void {
+  let px = size;
+  do {
+    ctx.font = `${bold ? 'bold ' : ''}${px}px sans-serif`;
+    px -= 1;
+  } while (px > 6 && ctx.measureText(text).width > maxWidth);
+  ctx.fillText(text, x, y);
+}
+
+let restrictedTexture: THREE.CanvasTexture | null = null;
+
+/** 立入禁止 ("no entry"), with the English underneath and whose land it is. */
+function restrictedLabel(): THREE.CanvasTexture {
+  if (restrictedTexture) return restrictedTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 192;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#f4f2ec';
+    ctx.fillRect(0, 0, 192, 128);
+    ctx.strokeStyle = '#d0282a';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(5, 5, 182, 118);
+    ctx.fillStyle = '#d0282a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(ctx, '立入禁止', 96, 46, 40, true, 160);
+    ctx.fillStyle = '#1a1d24';
+    fitText(ctx, 'RESTRICTED AREA', 96, 82, 17, true, 160);
+    fitText(ctx, 'CHRONOS CORP · DRONE PATROLS', 96, 104, 13, false, 160);
+  }
+  restrictedTexture = new THREE.CanvasTexture(canvas);
+  restrictedTexture.colorSpace = THREE.SRGBColorSpace;
+  return restrictedTexture;
+}
+
 /** Set dressing that doesn't fit the tile grid: statues, flags, skeletons, holograms. */
 export function buildDecor(kind: DecorKind): DecorRig {
   const root = new THREE.Group();
@@ -591,6 +629,48 @@ export function buildDecor(kind: DecorKind): DecorRig {
             const a = time * 1.2 + (i * Math.PI * 2) / 3;
             note.position.set(Math.cos(a) * 0.8, 1.2 + ((time * 0.5 + i * 0.33) % 1) * 1.6, Math.sin(a) * 0.8);
           }
+        },
+      };
+    }
+    case 'restricted': {
+      // A "no entry" board at a bridge into Chronos Corp's district, leaning back toward the camera.
+      root.add(cylinder(0.035, 0.04, 1.3, '#3a3c46', 0, 0.65, 0));
+      const sign = new THREE.Group();
+      sign.position.set(0, 1.4, 0.02);
+      sign.rotation.x = -0.75;
+      sign.scale.setScalar(1.35);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.62), new THREE.MeshBasicMaterial({ map: restrictedLabel() }));
+      face.position.z = 0.03;
+      sign.add(box(1.0, 0.67, 0.04, '#2a2c34', 0, 0, 0, { outline: true }), face);
+      root.add(sign);
+      return still;
+    }
+    case 'pedestrian': {
+      // Someone waiting in the June rain under an umbrella; clear vinyl ones are everywhere in Tokyo.
+      const pick = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)];
+      const person = buildHuman(pick(['citizen', 'vendor', 'hacker'] as const), {
+        top: pick(['#3a2a5a', '#2a4a6a', '#6a2a3a', '#2a2a30', '#5a5a64']),
+        pants: pick(['#14141e', '#2a2a3a', '#3a3424']),
+        apron: undefined,
+        kerchief: undefined,
+      });
+      person.root.rotation.y = (Math.random() - 0.5) * 2.4;
+      root.add(person.root);
+      const vinyl = Math.random() < 0.5;
+      const canopy = new THREE.Mesh(
+        new THREE.ConeGeometry(0.42, 0.18, 10, 1, true),
+        new THREE.MeshToonMaterial({ color: vinyl ? '#e8f0f4' : pick(['#1a2a4a', '#8a1a2a', '#1a1a1e', '#2a5a3a']), transparent: vinyl, opacity: vinyl ? 0.45 : 1, side: THREE.DoubleSide }),
+      );
+      canopy.position.set(0.12, 1.32, 0);
+      const handle = cylinder(0.012, 0.012, 0.55, '#d8d8d8', 0.12, 1.05, 0, {}, 4);
+      root.add(canopy, handle);
+      const phase = Math.random() * 10;
+      return {
+        root,
+        update(time) {
+          person.animate(time + phase, 0);
+          // Shifting from foot to foot, and the umbrella with them.
+          canopy.rotation.z = Math.sin((time + phase) * 0.8) * 0.06;
         },
       };
     }

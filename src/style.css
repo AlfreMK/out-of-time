@@ -186,6 +186,15 @@ body {
   font-size: 13px !important;
 }
 
+/* Over the item bar the canvas draws at the bottom center; above the joystick zone so taps pick items. */
+.touch-hotbar {
+  position: fixed;
+  display: none;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 1;
+}
+
 /* The game is 16:9: ask phones held upright to turn sideways. */
 .rotate {
   display: none;

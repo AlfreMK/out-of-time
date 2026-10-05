@@ -61,6 +61,9 @@ export class WorldView {
   private readonly particles: THREE.InstancedMesh;
   private readonly focus = new THREE.Vector3();
   private darkness = 0;
+  /** 0 outdoors, 1 under a roof: rain and dust fade out indoors. */
+  private indoors = 0;
+  private weatherOpacity = 0;
   private readonly weather: THREE.LineSegments | THREE.Points | null = null;
 
   constructor(world: World) {
@@ -87,7 +90,10 @@ export class WorldView {
     this.scene.add(this.hemi, this.sun, this.sun.target, this.lantern);
 
     this.weather = this.buildWeather();
-    if (this.weather) this.scene.add(this.weather);
+    if (this.weather) {
+      this.scene.add(this.weather);
+      this.weatherOpacity = (this.weather.material as THREE.Material).opacity;
+    }
 
     this.terrain = buildTerrain(world.map);
     this.scene.add(this.terrain.group);
@@ -149,6 +155,7 @@ export class WorldView {
     const day = this.theme.light;
     this.hemi.intensity = 1.7 * day * (1 - d) + 0.22 * d;
     this.sun.intensity = 2.3 * day * (1 - d) + 0.05 * d;
+    this.indoors += ((INTERIOR_LOOKS.has(here) ? 1 : 0) - this.indoors) * Math.min(1, dt * 3);
     this.updateWeather(dt);
     this.lantern.intensity = 14 * d * (1 + Math.sin(time * 9) * 0.04);
     this.lantern.position.set(hero.x / PX, 1.6, hero.y / PX + 0.3);
@@ -185,6 +192,9 @@ export class WorldView {
   private updateWeather(dt: number): void {
     const weather = this.weather;
     if (!weather) return;
+    // No rain (or blowing dust) under a roof.
+    (weather.material as THREE.Material).opacity = this.weatherOpacity * (1 - this.indoors);
+    weather.visible = this.indoors < 0.98;
     weather.position.set(this.focus.x, 0, this.focus.z);
     const attr = weather.geometry.getAttribute('position') as THREE.BufferAttribute;
     const array = attr.array as Float32Array;
@@ -265,8 +275,8 @@ export class WorldView {
       const oy = watcher.y - 4;
       positions.setXYZ(0, ox / PX, 0.06, oy / PX);
       for (let i = 0; i <= CONE_RAYS; i++) {
-        const a = watcher.angle - watcher.fov / 2 + (watcher.fov * i) / CONE_RAYS;
-        const len = this.world.map.rayLength(ox, oy, a, watcher.range);
+        const a = watcher.angle - watcher.viewFov / 2 + (watcher.viewFov * i) / CONE_RAYS;
+        const len = this.world.map.rayLength(ox, oy, a, watcher.viewRange);
         positions.setXYZ(i + 1, (ox + Math.cos(a) * len) / PX, 0.06, (oy + Math.sin(a) * len) / PX);
       }
       positions.needsUpdate = true;
@@ -296,7 +306,9 @@ export class WorldView {
       const radius = Math.max(0.05, (ring.radius * ring.t) / PX);
       mesh.position.set(ring.x / PX, 0.08, ring.y / PX);
       mesh.scale.set(radius, radius, 1);
-      (mesh.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - ring.t);
+      // A noise drowned out by the train only draws a faint, small ring: nobody heard it.
+      if (ring.muffled) mesh.scale.multiplyScalar(0.5);
+      (mesh.material as THREE.MeshBasicMaterial).opacity = (ring.muffled ? 0.15 : 0.5) * (1 - ring.t);
     });
   }
 
