@@ -16,9 +16,11 @@ Read this first when picking the project up in a new chat or with another agent.
 
 A small third-person stealth adventure with a cel-shaded, chunky low-poly look (inspired by *Pizza Possum*/*Sifu*), a high follow camera, and no combat. Enemies are moving puzzles with vision cones, hearing and speech-bubble barks.
 
-**Story.** Dr. Andrew Ward of the Chronos Institute (Geneva, 2026) runs Test Run #47 and gets stranded in time. Each repair raises the machine's stability and opens the next "window". He uncovers that Test Run #12 (Dr. Aaron Pike, October 2019) was secretly manned. The ending happens 60 seconds after departure, back in the Geneva lab, with Nora (his colleague) and Pike.
+**Story.** Dr. Andrew Ward of the Chronos Institute (Geneva, 2026) runs Test Run #47 and gets stranded in time. Each repair raises the machine's stability and opens the next "window". He uncovers that Test Run #12 (Dr. Aaron Pike, October 2019) was secretly manned.
 
-**Final puzzle.** The player must enter the origin year **2026** (`HOME_YEAR` in `src/eras/shared.ts`). The clues: in 2087 Yuki's leaked Chronos file says #47 launched 61 years earlier (everything after the jump was wiped, so nobody knows what happened to Andrew: no paradox with the ending; Yuki's Pike lines depend on whether Andrew has the recorder / saw the crypt panel); Pike says #47 was scheduled 7 years after his run in 2019. (Nora only appears in the 2026 lab: the user found an aged Nora in 2087 odd, so she was replaced by Yuki.)
+**Ending (a cliffhanger, `src/scenes/ending.ts`).** Pike betrays Andrew during the jump home: he has seen Chronos Corp rule 2087 and read in the Madrid museum that the Chronos Leaks bring it down, so he wants to *be* Chronos, and Andrew (who promised Yuki to tell everyone what Chronos did) is the only witness. He opens the passenger coupling and Andrew falls out of the field. In the Geneva lab, 60 seconds after departure, Pike steps out alone; Nora (his colleague) presses him about Andrew, Pike deletes #47's telemetry, field logs and reports (the wiped file Yuki finds in 2087) and leaves to "tell the director Aaron Pike is home"; Nora restores only the launch log to a forgotten backup partition (the one record that survives to 2087). Andrew wakes on a starlit plain in a year nobody knows yet (keep it unidentifiable: no landmarks, flora or fauna that date it), with no machine, core or Pip. Then "TO BE CONTINUED" and the credits ("Andrew Ward will return."). Foreshadowing in Madrid: Pike's journal ends with "Jump 4: Tokyo, 2087 ... It should have been mine" and torn-out pages, he asks whose cyberdeck is in the showcase (Andrew names Yuki), the showcase label says Chronos Corp's founder was never publicly named, and he climbs into the machine at `goHome()`. The user picked this over the old happy ending.
+
+**Final puzzle.** The player must enter the origin year **2026** (`HOME_YEAR` in `src/eras/shared.ts`). The clues: in 2087 Yuki's leaked Chronos file says #47 launched 61 years earlier (everything after the jump was wiped, by Pike in the ending, so nobody knows what happened to Andrew; Yuki's Pike lines depend on whether Andrew has the recorder / saw the crypt panel); Pike says #47 was scheduled 7 years after his run in 2019. (Nora only appears in the 2026 lab: the user found an aged Nora in 2087 odd, so she was replaced by Yuki.)
 
 | # | Era (`EraId`) | Place / year | Mechanic it teaches | Machine parts | Reward / key item | Locked area (opened later) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -59,7 +61,7 @@ src/game/      game loop & fades, flow (scene transitions), world (the playable-
                entities/ (state only: player, watcher, props), tilemap (markers, collision, ledges, LOS), state (save v2), ui
 src/render/    three.js views: materials (toon, outline, silhouette), primitives, humans, creatures, machines, props3d, terrain (instanced), world-view, sets (cinematics)
 src/eras/      one file per era + *-map.ts ASCII maps, types.ts (WorldApi/EraDef), shared.ts (machine menu, final puzzle), info.ts
-src/scenes/    title, intro (3D cinematic), travel (tunnel), ending (lab + credits with accuracy notes)
+src/scenes/    title, intro (3D cinematic), travel (tunnel), ending (betrayal in the tunnel, Geneva lab, stranded Andrew, "to be continued", credits with accuracy notes)
 scripts/       validate-maps.ts (runs in Node with type stripping)
 ```
 

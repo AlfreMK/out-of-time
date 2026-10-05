@@ -162,6 +162,8 @@ export async function goHome(w: WorldApi): Promise<void> {
   await w.say(
     `ORIGIN YEAR ${year}: SIGNATURE MATCH.`,
     [Speaker.Andrew, '2026. Home. Sixty seconds after I left, if the math holds.'],
+    'Pike squeezes into the machine beside Andrew, his journal tucked under his arm.',
+    [Speaker.Pike, 'Home, Ward. At last.'],
   );
   w.machineGlitch(true);
   w.sfx('warp');

@@ -108,6 +108,8 @@ export const RUINS: EraDef = {
         [Speaker.Pike, '(written) Jump 1: Hell Creek. At dawn I watched a herd of Triceratops cross a river. Nobody will ever believe me.'],
         [Speaker.Pike, '(written) Jump 2: Cologne, 1248. A Dominican friar caught me reading his books. I said I was a scholar from Toledo. He was delighted.'],
         [Speaker.Pike, '(written) Jump 3: Araucanía. A Mapuche machi saved my life with foye bark. I should have taken more of it.'],
+        [Speaker.Pike, '(written) Jump 4: Tokyo, 2087. The Institute has a new name: Chronos Corporation. It owns half the city. It should have been mine.'],
+        'The pages after that one have been torn out.',
       ),
     );
 
@@ -363,6 +365,9 @@ async function talkToPike(w: WorldApi): Promise<void> {
     [Speaker.Pike, 'But it needs your exact origin year. Get it wrong and you end up somewhere else entirely.'],
     [Speaker.Pike, "#47... They scheduled #47 seven years after my run. Don't tell me you forgot your own year."],
     [Speaker.Andrew, '...Of course not. Probably.'],
+    [Speaker.Pike, 'And Ward... That cyberdeck in the showcase out front. Do you know whose it was?'],
+    [Speaker.Andrew, 'Yuki Tanaka. She asked me to tell everyone what Chronos did, once I got home.'],
+    [Speaker.Pike, '...Did she. Then you had better get home.'],
     [Speaker.Pike, 'One more thing. The machine can carry two. Take me home with you, Ward. Please.'],
     [Speaker.Andrew, "Of course. Let's go home."],
   );
@@ -373,7 +378,7 @@ const EXHIBITS: Array<{ kind: DecorKind; lines: Line[] }> = [
   {
     kind: 'exhibit_deck',
     lines: [
-      'A battered cyberdeck. Label: "Tokyo, 2087. Used in the Chronos Leaks, the archive dump that brought down the Chronos Corporation."',
+      'A battered cyberdeck. Label: "Tokyo, 2087. Used in the Chronos Leaks, the archive dump that brought down the Chronos Corporation. Its founder was never publicly named."',
       [Speaker.Andrew, "Yuki's deck. She did it. Chronos fell... and the stickers are still on it."],
     ],
   },

@@ -207,6 +207,58 @@ export function buildJungleSet(): CinematicSet & { flyers: Rig[] } {
 }
 
 // ---------------------------------------------------------------------------
+// Wherever Andrew lands after Pike throws him out of the jump: a cold, starlit
+// plain with nothing in it that gives away the era.
+
+export function buildStrandedSet(): { scene: THREE.Scene; andrew: HumanRig; update(time: number): void } {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#0a0f1e');
+  scene.fog = new THREE.Fog('#0a0f1e', 8, 30);
+  lights(scene, '#5a6a9a', '#141820', '#9fb4ff', 0.9);
+  ground(scene, '#2b303c', 60);
+  const random = rng(23);
+
+  // Loose stones of every size, scattered unevenly.
+  for (let i = 0; i < 40; i++) {
+    const a = random() * Math.PI * 2;
+    const d = 2.5 + random() * 16;
+    const size = 0.15 + random() * random() * 1.4;
+    // Keep the spot where Andrew lands (and the view of it) clear.
+    if (Math.hypot(Math.cos(a) * d, Math.sin(a) * d - 3.4) < 2.4) continue;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), toon(random() < 0.5 ? '#3a404e' : '#444a58'));
+    rock.position.set(Math.cos(a) * d, size * 0.4, Math.sin(a) * d - 3);
+    rock.rotation.set(random() * 3, random() * 3, random() * 3);
+    rock.scale.y = 0.5 + random() * 0.4;
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    scene.add(rock);
+  }
+
+  const starPositions = new Float32Array(500 * 3);
+  for (let i = 0; i < 500; i++) {
+    const a = random() * Math.PI;
+    const r = 40 + random() * 10;
+    starPositions.set([Math.cos(a) * r, 2 + random() * 30, -Math.sin(a) * r], i * 3);
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: '#c8d4ff', size: 0.18, fog: false }));
+  scene.add(stars);
+
+  const andrew = buildHuman('andrew');
+  andrew.root.position.set(0, 0, 0.4);
+  scene.add(andrew.root);
+
+  return {
+    scene,
+    andrew,
+    update(time) {
+      stars.rotation.y = time * 0.004;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Title screen backdrop
 
 export function buildTitleSet(): { scene: THREE.Scene; update(time: number): void } {
