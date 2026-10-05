@@ -275,6 +275,8 @@ export interface WorldApi {
   fadeOut(seconds?: number): Promise<void>;
   fadeIn(seconds?: number): Promise<void>;
   machineGlitch(on: boolean): void;
+  /** Pans the camera over to a spot, to show what Andrew is talking about; null follows him again. */
+  lookAt(at: RoutePoint | null): void;
 
   // Spawning (used from EraDef.setup)
   watcher(spec: WatcherSpec): void;

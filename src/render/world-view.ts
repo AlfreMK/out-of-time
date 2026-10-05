@@ -154,7 +154,8 @@ export class WorldView {
 
     // Camera: smooth follow plus optional shake.
     const hero = this.world.hero;
-    const target = new THREE.Vector3(hero.x / PX, 0.4, hero.y / PX);
+    const { x, y } = this.world.cameraFocus ?? hero;
+    const target = new THREE.Vector3(x / PX, 0.4, y / PX);
     this.focus.lerp(target, Math.min(1, dt * 6));
     this.camera.position.copy(this.focus).add(CAMERA_OFFSET);
     if (shake > 0) {
@@ -163,7 +164,7 @@ export class WorldView {
     }
     this.camera.lookAt(this.focus);
 
-    // The sun (and its shadow camera) follows the player, snapped to whole shadow texels in the
+    // The sun (and its shadow camera) follows the camera, snapped to whole shadow texels in the
     // sun's own view. Without the snap, shadow edges shimmer on roofs and walls as the camera moves.
     tmpSun.copy(this.focus).applyMatrix4(SUN_ROTATION_INV);
     tmpSun.x = Math.round(tmpSun.x / SHADOW_TEXEL) * SHADOW_TEXEL;

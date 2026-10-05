@@ -161,7 +161,8 @@ export type TileSet = Record<string, TileDef>;
 export const PREHISTORY_TILES: TileSet = {
   '#': { look: 'cliff', solid: true },
   t: { look: 'tree', solid: true },
-  f: { look: 'fern', solid: true, low: true },
+  // Tree ferns: tall, but leafy enough to push through, and they hide you like the undergrowth.
+  f: { look: 'fern', solid: false, hide: true },
   '.': { look: 'grass', solid: false },
   // Grasslands didn't exist yet in the Cretaceous: cover comes from ferns and horsetails.
   ',': { look: 'undergrowth', solid: false, hide: true },

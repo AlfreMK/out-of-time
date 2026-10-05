@@ -437,6 +437,8 @@ const FLOCK_STARTLE_SNEAKING = 9;
 /** Seconds the birds stay away after taking off, and how long their flight back takes at the end. */
 export const FLOCK_AWAY = 14;
 export const FLOCK_RETURN = 1.6;
+/** The birds won't land while an animal on the lookout (the Anzu checking on their racket) or Andrew is this close (px). */
+export const FLOCK_CLEAR = 56;
 
 /** Small birds pecking on the ground: walk up to them and they take off with a racket (see `FlockSpec`). */
 export class Flock extends Entity {
@@ -467,6 +469,11 @@ export class Flock extends Entity {
   override update(dt: number, world: World): void {
     super.update(dt, world);
     if (this.away > 0) {
+      // They stay out of sight until the spot is clear, instead of landing at the feet of whoever came to look.
+      if (this.away - dt < FLOCK_RETURN && this.away >= FLOCK_RETURN && this.crowded(world)) {
+        this.away = FLOCK_RETURN;
+        return;
+      }
       this.away = Math.max(0, this.away - dt);
       if (this.away === 0) this.interactLabel = 'Birds';
       return;
@@ -481,6 +488,11 @@ export class Flock extends Entity {
     world.game.audio.sfx('flutter');
     world.burst(this.x, this.y, '#8a6a4a', 10, 6);
     world.noise(this.x, this.y, FLOCK_NOISE, 'horn');
+  }
+
+  private crowded(world: World): boolean {
+    const near = (x: number, y: number): boolean => Math.hypot(x - this.x, y - this.y) < FLOCK_CLEAR;
+    return near(world.hero.x, world.hero.y) || world.watcherList.some((w) => w.watching && near(w.x, w.y));
   }
 }
 

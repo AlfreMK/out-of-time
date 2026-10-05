@@ -7,7 +7,8 @@
  * South of the river, the meadow has no predators: an Anzu broods on its nest
  * in a fern-walled clearing (with the medicinal fern), and birds peck nearby.
  *
- * Legend:  # cliff   t conifer   f tree fern   . ground cover   , fern and horsetail undergrowth (hides you)
+ * Legend:  # cliff   t conifer   . ground cover   , fern and horsetail undergrowth (hides you)
+ *          f tree fern (hides you too, and you can push through it)
  *          : dirt    ~ river     o stepping stones   s sand   c cave floor (dark)
  *          b bones (noisy)       r rubble   x crater   ^ mountain gravel   k mud with three-toed tracks
  */
@@ -65,12 +66,12 @@ export const PREHISTORY_MAP = [
   'tt.tt.tt.tt...............,..,.::..,...k.,....,..f.....t.t...ttt',
   'tt......t..t....,,........,....::.......kkkk..,,..,,ftt.t....t.t',
   't...t......t..........................t.ftf.k.ft.f.....tt..t.t.t',
-  't.t.......t.,..,.........,,.....,....tt.tftfktfttf..,tt..t.....t',
-  't..tt..tttt...,...,...,.f.,...,..f,,..,,tt..k..ft..,.t.t.t....tt',
+  't.t.......t.,..,.........,,.....,....tt.tft.k.tttf..,tt..t.....t',
+  't..tt..tttt...,...,...,.f.,...,..f,,..,,tt..k..tt..,.t.t.t....tt',
   'ttt.t....t.t.f.....f....,......,,,...6,,t...k...tt..,.t.t.t..t.t',
-  't.tt.tt............,,..,...,.,.,.,...,,ft...7...ft,,.ttttt.....t',
-  'ttt.t...tt.t..,.,....,...f....,,,,,..,,tf......4.t.,..tt.t.t..tt',
-  't.....ttt.tt..,..,.................,..,.tt......tf........t....t',
+  't.tt.tt............,,..,...,.,.,.,...,,ft...7...tt,,.ttttt.....t',
+  'ttt.t...tt.t..,.,....,...f....,,,,,..,,tt......4.t.,..tt.t.t..tt',
+  't.....ttt.tt..,..,.................,..,.tt......tt........t....t',
   'tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt',
 ];
 

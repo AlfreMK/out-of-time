@@ -279,20 +279,24 @@ export const PREHISTORY: EraDef = {
           'Ferns and bushes hide you. Hold {sneak} to sneak: animals won\'t hear you coming.',
         ),
     });
-    // Coming up the path from the south, before the nest comes into view.
+    // Close enough to spot the nest: around the thicket and the birds, plus the head of the track down
+    // to the nest, just before it enters the Anzu's view. The camera pans over to show it.
     for (const area of [
-      { x: 34, y: 49, w: 29, h: 2 },
-      { x: 29, y: 49, w: 5, h: 10 },
+      { x: 35, y: 51, w: 18, h: 8 },
+      { x: 41, y: 50, w: 7, h: 1 },
     ]) {
       w.trigger({
         area,
         once: Flag.PreNestHint,
-        run: (w) =>
-          w.say(
+        run: async (w) => {
+          w.lookAt('7');
+          await w.say(
             [Speaker.Andrew, "Over there: a nest, and something big sitting on it. Feathers, a tall crest, a toothless beak... an Anzu!"],
             [Speaker.Andrew, 'Fossils of its relatives in Mongolia were found right on top of their nests, arms spread over the eggs. Brooding, like birds.'],
             [Speaker.Andrew, 'And those sharp-smelling ferns grow right next to it. It won\'t leave the eggs for a few footsteps. It would take a real commotion.'],
-          ),
+          );
+          w.lookAt(null);
+        },
       });
     }
     w.trigger({

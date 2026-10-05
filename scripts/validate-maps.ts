@@ -12,7 +12,7 @@ import { ERAS } from '../src/eras/index.ts';
 import type { ActorHandle, ChatSpec, CompanionHandle, EraDef, GateHandle, Route, RoutePoint, WorldApi } from '../src/eras/types.ts';
 import { FACING_VECTORS, TileMap, type TilePoint, type TileRect } from '../src/game/tilemap.ts';
 import { FACING_ANGLE, TUNING } from '../src/game/entities/watcher.ts';
-import { FLOCK_NOISE } from '../src/game/entities/props.ts';
+import { FLOCK_CLEAR, FLOCK_NOISE } from '../src/game/entities/props.ts';
 import { Flag } from '../src/game/flags.ts';
 import type { SignSpec, WatcherSpec } from '../src/eras/types.ts';
 
@@ -66,6 +66,7 @@ function record(def: EraDef): Recorded {
     fadeOut: async () => {},
     fadeIn: async () => {},
     machineGlitch: noop,
+    lookAt: noop,
     watcher: (spec) =>
       rec.routes.push({ route: spec.route, name: routeName(spec.route), kind: spec.kind, posted: spec.posted === true, id: spec.id, group: spec.group, spec }),
     chat: (spec) => rec.chats.push(spec),
@@ -296,9 +297,21 @@ function validate(def: EraDef): void {
       for (const [what, p] of [['the nest', post], ['the birds', flock]] as const) {
         if (reachable(map, start, p, pastHint)) fail(def.id, `${what} can be reached without the nest hint playing`);
       }
+      // It plays on the tiles where Andrew walks into its area: none of them in view of the Anzu...
       for (const r of hints) {
-        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (ever(x, y)) fail(def.id, `the nest hint at ${x},${y} plays in view of the Anzu`);
+        for (let y = r.y; y < r.y + r.h; y++) {
+          for (let x = r.x; x < r.x + r.w; x++) {
+            if (!walkable(x, y)) continue;
+            let entry = false;
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (walkable(x + dx, y + dy) && !pastHint(x + dx, y + dy)) entry = true;
+            if (entry && ever(x, y)) fail(def.id, `the nest hint at ${x},${y} plays in view of the Anzu`);
+            // ...and close enough to have the nest on screen.
+            if (entry && (Math.abs(x - post.tx) > 9 || post.ty - y > 6)) fail(def.id, `the nest hint at ${x},${y} plays before the nest is on screen`);
+          }
+        }
       }
+      // The birds land again once the Anzu is back on its nest.
+      if (Math.hypot(flock.tx - post.tx, flock.ty - post.ty) * 16 <= FLOCK_CLEAR) fail(def.id, 'the birds are so close to the nest that they never land again');
     }
     const pass = map.markerArea('J');
     if (reachable(map, start, at('5'), (tx, ty) => inRect(pass, tx, ty))) fail(def.id, 'the summit is reachable without crossing the mountain pass');

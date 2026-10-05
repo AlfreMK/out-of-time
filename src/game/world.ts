@@ -157,6 +157,8 @@ export class World implements Scene, WorldApi {
   readonly hero = new Player();
   /** Recent player positions, used by companions to follow the same path. */
   readonly trail: Array<{ x: number; y: number }> = [];
+  /** Where the camera looks instead of at the player, while a script shows something (`lookAt`). */
+  cameraFocus: { x: number; y: number } | null = null;
   private readonly view: WorldView;
   private entities: Entity[] = [];
   private readonly watchers: Watcher[] = [];
@@ -449,6 +451,7 @@ export class World implements Scene, WorldApi {
   }
 
   private respawn(): void {
+    this.cameraFocus = null;
     this.hero.x = this.activeCheckpoint.x;
     this.hero.y = this.activeCheckpoint.y;
     this.hero.stun = 0;
@@ -1462,6 +1465,15 @@ export class World implements Scene, WorldApi {
     return new Promise((resolve) => {
       this.fadeResolve = resolve;
     });
+  }
+
+  lookAt(at: RoutePoint | null): void {
+    if (!at) {
+      this.cameraFocus = null;
+      return;
+    }
+    const p = this.routeOf([at])[0];
+    this.cameraFocus = { x: p.tx * TILE + TILE / 2, y: p.ty * TILE + TILE / 2 };
   }
 
   machineGlitch(on: boolean): void {
