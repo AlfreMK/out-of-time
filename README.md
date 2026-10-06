@@ -49,8 +49,6 @@ Keyboard, gamepads (Xbox, PlayStation and other standard controllers) and touch 
 
 **Lost?** The pause menu shows your current goal and a **journal** with every line of dialogue so far (conversations repeated back to back show once). Scroll it with Up/Down (hold to keep going), page with Left/Right, or use the mouse wheel.
 
-**Testing cheat:** type `letmetest` during play (like the old GTA codes) to toggle **god mode**: enemies can't see or catch you, hazards don't hurt you and you walk twice as fast. While it's on, the pause menu gets a **Debug** entry: give all items, unlock all eras, warp to any era, or repair the machine in the current era. God mode is never saved.
-
 ## How it plays
 
 Each era follows the same loop: **explore → find materials → repair the machine → jump**. Each one also gives you something that changes how you can explore the other eras.
