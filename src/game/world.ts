@@ -18,6 +18,7 @@ import type {
   HazardSpec,
   Line,
   NpcSpec,
+  ObstacleLook,
   ObstacleSpec,
   PickupSpec,
   RoutePoint,
@@ -61,8 +62,7 @@ import { ERA_IDS, ITEM_IDS, withoutRepeats, type EraId, type ItemId } from './st
 import { TILE, TileMap, type TileRect, type TilePoint } from './tilemap.ts';
 import { ChoiceMenu, DialogueBox, drawPanel, speakerColor, Timers, YearPicker } from './ui.ts';
 import { eraFlags, Flag, progress, type FlagName } from './flags.ts';
-import { eraInfo, itemName, msg, speakerName, t, tr } from '../i18n/index.ts';
-import type { Text } from '../i18n/keys.ts';
+import { eraInfo, itemName, msg, speakerName, t, tr, verbatim, type ScreenText, type Text } from '../i18n/index.ts';
 import { SettingsPanel } from './settings.ts';
 
 interface PixelRect {
@@ -120,6 +120,8 @@ const THROW_LONG = 136;
 const THROW_WINDUP = 0.8;
 /** The item bar at the bottom center: square slots, in UI pixels. */
 const SLOT = 18;
+/** What the prompt over an obstacle says unless its spec names it. */
+const OBSTACLE_LABELS: Record<ObstacleLook, Text> = { boulder: 'Boulder', column: 'Fallen column', log: 'Fallen trunk', blastdoor: 'Blast door', chest: 'Strongbox' };
 /** Widest a speech bubble gets before its text wraps (UI px). */
 const BUBBLE_WIDTH = 130;
 /** A wrapped journal line; the first line of a speech starts with the speaker's name in their color. */
@@ -199,7 +201,7 @@ export class World implements Scene, WorldApi {
   private fadeTarget = 0;
   private fadeSpeed = 2;
   private fadeResolve: (() => void) | null = null;
-  private toastText = '';
+  private toastText: ScreenText | null = null;
   private toastTime = 0;
   private toolIndex = 0;
   private toolCooldown = 0;
@@ -835,7 +837,7 @@ export class World implements Scene, WorldApi {
 
   /** Testing tools, available while god mode is on (type "letmetest"). */
   private async debugMenu(): Promise<void> {
-    const options = ['Give all items', 'Unlock all eras', 'Warp to era...', 'Repair the machine in this era', 'Restart this era', 'Back'];
+    const options: Text[] = ['Give all items', 'Unlock all eras', 'Warp to era...', 'Repair the machine in this era', 'Restart this era', 'Back'];
     const pick = await this.choose('DEBUG', options);
     if (pick === 0) {
       for (const item of ITEM_IDS) this.give(item);
@@ -854,7 +856,7 @@ export class World implements Scene, WorldApi {
       this.toast('All eras unlocked');
     } else if (pick === 2) {
       const eras = ERA_IDS.filter((era) => era !== this.def.id);
-      const choice = await this.choose('WARP TO', [...eras.map((era) => `${eraInfo(era).name}  ·  ${eraInfo(era).year}`), 'Cancel']);
+      const choice = await this.choose('WARP TO', [...eras.map((era) => verbatim(`${eraInfo(era).name}  ·  ${eraInfo(era).year}`)), 'Cancel']);
       if (choice < eras.length) {
         this.save();
         await this.travel(eras[choice]);
@@ -986,7 +988,7 @@ export class World implements Scene, WorldApi {
   }
 
   /** A speech bubble whose bottom row sits at `y`; long lines wrap onto more rows above it. */
-  private drawBubble(screen: Screen, text: string, x: number, y: number, alpha: number, color = '#f4f1de'): void {
+  private drawBubble(screen: Screen, text: Text, x: number, y: number, alpha: number, color = '#f4f1de'): void {
     const ui = screen.ui;
     const lines = wrapText(ui, tr(text), BUBBLE_WIDTH, 5.5);
     ui.font = `5.5px ${FONT_FAMILY}`;
@@ -1058,7 +1060,7 @@ export class World implements Scene, WorldApi {
     this.drawTrain(screen);
 
     if (this.toastTime > 0 && this.toastText) {
-      const toast = tr(this.toastText);
+      const toast = this.game.input.format(tr(this.toastText));
       ui.font = `6.5px ${FONT_FAMILY}`;
       const tw = Math.min(VIEW_W - 20, ui.measureText(toast).width + 16);
       const alpha = Math.min(1, this.toastTime * 3);
@@ -1445,12 +1447,12 @@ export class World implements Scene, WorldApi {
     return this.dialogue.open(lines);
   }
 
-  choose(prompt: string, options: string[]): Promise<number> {
+  choose(prompt: ScreenText, options: ScreenText[]): Promise<number> {
     return this.menu.open(prompt, options);
   }
 
-  toast(text: string): void {
-    this.toastText = this.game.input.format(text);
+  toast(text: ScreenText): void {
+    this.toastText = text;
     this.toastTime = 2.2;
   }
 
@@ -1595,7 +1597,7 @@ export class World implements Scene, WorldApi {
 
   obstacle(spec: ObstacleSpec): ActorHandle {
     const p = this.map.marker(spec.marker);
-    const label = spec.label ?? { boulder: 'Boulder', column: 'Fallen column', log: 'Fallen trunk', blastdoor: 'Blast door', chest: 'Strongbox' }[spec.look];
+    const label = spec.label ?? OBSTACLE_LABELS[spec.look];
     const obstacle = new Obstacle(p.tx * TILE + TILE / 2, (p.ty + 1) * TILE, spec.look, label, spec.interact);
     this.entities.push(obstacle);
     return this.handle(obstacle);
@@ -1607,12 +1609,12 @@ export class World implements Scene, WorldApi {
     this.entities.push(this.machineEntity);
   }
 
-  inspect(marker: RoutePoint, label: string, interact: Script): void {
+  inspect(marker: RoutePoint, label: Text, interact: Script): void {
     const p = this.routeOf([marker])[0];
     this.entities.push(new Inspect(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, label, interact));
   }
 
-  inspectEach(marker: string, label: string, interact: (w: WorldApi, index: number) => Promise<void> | void): void {
+  inspectEach(marker: string, label: Text, interact: (w: WorldApi, index: number) => Promise<void> | void): void {
     this.map.markerAll(marker).forEach((p, index) => {
       this.entities.push(new Inspect(p.tx * TILE + TILE / 2, p.ty * TILE + TILE / 2 + 4, label, (w) => interact(w, index)));
     });
@@ -1699,7 +1701,7 @@ export class World implements Scene, WorldApi {
     }
   }
 
-  enterYear(prompt: string, start: number): Promise<number> {
+  enterYear(prompt: ScreenText, start: number): Promise<number> {
     return this.yearPicker.open(prompt, start);
   }
 

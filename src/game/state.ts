@@ -1,4 +1,5 @@
 import { Flag, progress, type FlagName } from './flags.ts';
+import type { ScreenText } from '../i18n/index.ts';
 export type EraId = 'prehistory' | 'medieval' | 'araucania' | 'future' | 'ruins';
 
 export type ItemId =
@@ -97,8 +98,11 @@ const SAVE_KEY = 'out-of-time.save';
 const LEGACY_SAVE_KEY = 'out-of-time.save.v1';
 const MAX_LOG = 300;
 
-/** A dialogue line kept in the journal: speaker (null for narration) and text. */
-export type LogEntry = [speaker: string | null, text: string];
+/**
+ * A dialogue line kept in the journal: speaker (null for narration) and text. A save from an older
+ * version may hold text that has changed since: it can't be translated, so it shows as written.
+ */
+export type LogEntry = [speaker: string | null, text: ScreenText];
 
 export interface Checkpoint {
   era: EraId;
@@ -146,7 +150,7 @@ export class GameState {
     else this.flags.delete(name);
   }
 
-  record(speaker: string | null, text: string): void {
+  record(speaker: string | null, text: ScreenText): void {
     const last = this.log[this.log.length - 1];
     if (last && last[0] === speaker && last[1] === text) return;
     this.log.push([speaker, text]);

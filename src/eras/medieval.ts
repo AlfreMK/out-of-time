@@ -6,7 +6,7 @@ import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { EraDef, GateHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
-import { itemList, itemName, msg, tr } from '../i18n/index.ts';
+import { itemList, itemName, msg, tr, type Text } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['gear', 'quicksilver'];
 
@@ -46,7 +46,7 @@ export const MEDIEVAL: EraDef = {
     if (w.flag(Flag.Alarm)) return w.has('shield') ? 'Escape through the archers’ gallery on the east side of the keep.' : 'Grab the shield in the armory, then escape through the archers’ gallery.';
     if (!w.flag(progress.diagnosed('medieval'))) return 'Check the time machine.';
     if (!w.flag(progress.fixed('medieval'))) {
-      const steps: string[] = [];
+      const steps: Text[] = [];
       if (!w.has('gear')) {
         if (w.has('charcoal')) steps.push('bring the charcoal to the bell-founder');
         else if (!w.has('bread')) steps.push(w.has('firewood') ? 'bring the firewood to Agnes the baker' : 'Brutus needs bribing: Agnes the baker needs firewood from the woodcutter’s clearing in the forest');

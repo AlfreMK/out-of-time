@@ -165,6 +165,7 @@ function unescape(c: string | undefined): string {
 export function isProse(value: string): boolean {
   if (IGNORE.has(value)) return false;
   const letters = value.replace(/\{\d+\}/g, '');
+  if (letters === '...') return true; // a speechless line
   // All-caps text (HUD headings, robot barks, machine readouts) needs a real word, so map markers don't count.
   if (!/[a-z]/.test(letters)) return /[A-Z]{4,}/.test(letters) || /^[\d,]+ (AD|BC)$/.test(letters);
   if (/^[a-z][\w-]*(\.[\w-]+)+$/.test(letters)) return false; // file names, dotted keys

@@ -139,6 +139,7 @@ body {
 
 .touch-caption {
   font-size: 9px;
+  text-transform: lowercase;
   opacity: 0.8;
   margin-top: 2px;
 }

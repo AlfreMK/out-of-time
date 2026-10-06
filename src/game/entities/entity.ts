@@ -1,6 +1,6 @@
 import type { EmoteKind } from '../looks.ts';
 import type { World } from '../world.ts';
-import { tr } from '../../i18n/index.ts';
+import { tr, type ScreenText } from '../../i18n/index.ts';
 
 export interface SolidBox {
   /** Half width / half height of the blocking box, centered on (x, y + offsetY). */
@@ -27,7 +27,7 @@ export abstract class Entity {
   solid: SolidBox | null = null;
   removed = false;
   /** When set, the player can interact with this entity and sees this label (see `promptLabel`). */
-  interactLabel: string | null = null;
+  interactLabel: ScreenText | null = null;
   /** Height of the character in map pixels, used to place emotes and prompts. */
   height = 18;
   facingLeft = false;

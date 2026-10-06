@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Line } from '../eras/types.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
-import { msg, t, tr } from '../i18n/index.ts';
+import { msg, t, type Text } from '../i18n/index.ts';
 import { drawText, wrapText } from '../engine/text.ts';
 import { glitchText } from '../eras/info.ts';
 import type { Game, Scene } from '../game/game.ts';
@@ -12,7 +12,7 @@ import { Speaker } from '../game/speakers.ts';
 import { Flag } from '../game/flags.ts';
 
 /** Short notes on the real history and science behind each era, shown in the credits. */
-const NOTES = [
+const NOTES: readonly Text[] = [
   'HELL CREEK, 66.5 MILLION YEARS AGO. T. rex, Triceratops, Pachycephalosaurus and the feathered Dakotaraptor really shared this landscape. Grasses had barely evolved, so ferns and horsetails covered the ground. Pachycephalosaurus domes are real; whether they were used for head-butting is still debated. Anzu, Thescelosaurus, Ankylosaurus, Edmontosaurus and Champsosaurus lived there too; oviraptorosaurs have been found fossilized brooding their nests, and dromaeosaurs left two-toed tracks.',
   'COLOGNE, 1248. The old cathedral burned that April, and in August Archbishop Konrad von Hochstaden laid the foundation stone of the one that still stands (finished in 1880). Albertus Magnus came to Cologne that year with his student Thomas Aquinas. Mercury melts at about -39 °C.',
   'ARAUCANÍA, 1553. Lautaro (Leftraru) had served Pedro de Valdivia as a groom before escaping. On December 25, 1553 he led the Mapuche to victory at the Battle of Tucapel. The foye (Drimys winteri) is sacred to the Mapuche, and its bark prevents scurvy.',
@@ -333,7 +333,7 @@ export class EndingScene implements Scene {
       bold: true,
       color: this.decoupled && Math.floor(time * 4) % 2 === 0 ? '#ff5050' : '#7fd8ff',
     });
-    drawText(ui, tr(year), VIEW_W / 2, 60, { size: 16, align: 'center', bold: true, color: this.decoupled ? '#ff5050' : settled ? '#f1c232' : '#ffffff' });
+    drawText(ui, year, VIEW_W / 2, 60, { size: 16, align: 'center', bold: true, color: this.decoupled ? '#ff5050' : settled ? '#f1c232' : '#ffffff' });
   }
 
   private drawCredits(screen: Screen, time: number): void {
@@ -341,19 +341,20 @@ export class EndingScene implements Scene {
     screen.clear('#0b0b1f');
     const scroll = Math.max(0, this.creditsTime - 2) * 9;
     let y = 40 - scroll;
+    /** Draws a credits line, already in the player's language. */
     const line = (text: string, size: number, color: string, gap: number): void => {
-      if (y > -20 && y < VIEW_H + 10) drawText(ui, tr(text), VIEW_W / 2, y, { size, align: 'center', color });
+      if (y > -20 && y < VIEW_H + 10) drawText(ui, text, VIEW_W / 2, y, { size, align: 'center', color });
       y += gap;
     };
-    line('OUT OF TIME', 22, '#f4f1de', 34);
-    line('Thanks for playing!', 9, '#f1c232', 14);
-    line('Andrew Ward will return.', 7, '#9aa6bb', 26);
-    line('HISTORICAL & SCIENTIFIC NOTES', 7, '#7fd8ff', 14);
+    line(t('OUT OF TIME'), 22, '#f4f1de', 34);
+    line(t('Thanks for playing!'), 9, '#f1c232', 14);
+    line(t('Andrew Ward will return.'), 7, '#9aa6bb', 26);
+    line(t('HISTORICAL & SCIENTIFIC NOTES'), 7, '#7fd8ff', 14);
     for (const note of NOTES) {
-      for (const text of wrapText(ui, tr(note), 260, 6.5)) line(text, 6.5, '#d8dceb', 9);
+      for (const text of wrapText(ui, t(note), 260, 6.5)) line(text, 6.5, '#d8dceb', 9);
       y += 8;
     }
-    line('Made with TypeScript, Three.js and the Web Audio API.', 6.5, '#9aa6bb', 12);
+    line(t('Made with TypeScript, Three.js and the Web Audio API.'), 6.5, '#9aa6bb', 12);
     if (this.creditsTime > 3 && Math.floor(time * 2) % 2 === 0) {
       drawText(ui, msg().pressKeyForTitle({ key: this.game.input.glyph('interact') }), VIEW_W / 2, VIEW_H - 12, { size: 6.5, align: 'center', color: '#7fd8ff' });
     }

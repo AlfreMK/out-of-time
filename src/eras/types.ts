@@ -5,9 +5,10 @@ import type { EraId, ItemId } from '../game/state.ts';
 import type { TileSet } from '../game/tiledefs.ts';
 import type { TileRect } from '../game/tilemap.ts';
 import type { FlagName } from '../game/flags.ts';
+import type { ScreenText, Text } from '../i18n/index.ts';
 
 /** A line of dialogue: plain strings are narration, tuples have a speaker (always from `Speaker`). */
-export type Line = string | readonly [speaker: SpeakerName, text: string];
+export type Line = ScreenText | readonly [speaker: SpeakerName, text: ScreenText];
 
 export type Script = (w: WorldApi) => Promise<void> | void;
 export type Condition = (w: WorldApi) => boolean;
@@ -16,11 +17,11 @@ export type Facing = 'up' | 'down' | 'left' | 'right';
 export type WatcherKind = 'raptor' | 'anzu' | 'guard' | 'dog' | 'soldier' | 'rider' | 'camera' | 'drone' | 'bot';
 
 export interface Barks {
-  suspicious: string[];
-  investigate: string[];
-  giveUp: string[];
+  suspicious: readonly Text[];
+  investigate: readonly Text[];
+  giveUp: readonly Text[];
   /** A `posted` watcher shrugging off a small noise. */
-  holdPost: string[];
+  holdPost: readonly Text[];
 }
 
 /** A route stop: a marker character, or a tile's coordinates for maps whose 36 markers are all taken. */
@@ -73,7 +74,7 @@ export interface ChatSpec {
   /** The `WatcherSpec.id`s of the two speakers; the first one opens every conversation. */
   between: readonly [string, string];
   /** Conversations, played in turn and then from the start again. Lines alternate between the two. */
-  talks: ReadonlyArray<readonly string[]>;
+  talks: ReadonlyArray<readonly Text[]>;
   /**
    * Whether chatting takes their eyes off the job (facing each other, with shorter, narrower cones).
    * Posted sentries keep watching their post while they talk.
@@ -85,7 +86,7 @@ export interface NpcSpec {
   /** A marker, or a tile's coordinates for maps whose markers are all taken. */
   marker: RoutePoint;
   look: NpcLook;
-  name: string;
+  name: SpeakerName;
   facing?: Facing;
   talk: Script;
 }
@@ -136,7 +137,7 @@ export interface GateHandle {
 /** A hidden ally who answers the pifilka whistle by making a racket at their post. */
 export interface AllySpec {
   marker: string;
-  name: string;
+  name: SpeakerName;
   look: NpcLook;
   talk: Script;
 }
@@ -217,7 +218,7 @@ export interface SleeperSpec {
 
 export interface CompanionSpec {
   marker: string;
-  name: string;
+  name: SpeakerName;
   following: boolean;
   /** Runs when the player interacts while the companion is resting. */
   talk: Script;
@@ -229,7 +230,7 @@ export interface ObstacleSpec {
   marker: string;
   look: ObstacleLook;
   interact: Script;
-  label?: string;
+  label?: Text;
 }
 
 /** Handle to a spawned character that scripts can move around. */
@@ -264,8 +265,8 @@ export interface WorldApi {
 
   // Presentation
   say(...lines: Line[]): Promise<void>;
-  choose(prompt: string, options: string[]): Promise<number>;
-  toast(text: string): void;
+  choose(prompt: ScreenText, options: ScreenText[]): Promise<number>;
+  toast(text: ScreenText): void;
   wait(seconds: number): Promise<void>;
   sfx(name: SfxName): void;
   /** Forces a theme (e.g. an alarm); null goes back to the area's own music. */
@@ -290,9 +291,9 @@ export interface WorldApi {
   obstacle(spec: ObstacleSpec): ActorHandle;
   machine(marker: string, interact: Script): void;
   /** An inspect spot on a marker, or on a tile's coordinates for maps whose markers are all taken. */
-  inspect(marker: RoutePoint, label: string, interact: Script): void;
+  inspect(marker: RoutePoint, label: Text, interact: Script): void;
   /** One inspect spot at every occurrence of a marker; `interact` gets the spot's index in reading order. */
-  inspectEach(marker: string, label: string, interact: (w: WorldApi, index: number) => Promise<void> | void): void;
+  inspectEach(marker: string, label: Text, interact: (w: WorldApi, index: number) => Promise<void> | void): void;
   checkpoint(marker: string): void;
   gate(spec: GateSpec): GateHandle;
   /** Set dressing on a marker, or on a tile's coordinates. */
@@ -310,7 +311,7 @@ export interface WorldApi {
   /** Switches off every watcher in a group for a while (cameras, robots). */
   disable(group: string, seconds: number): void;
   /** Asks the player for a four-digit year. */
-  enterYear(prompt: string, start: number): Promise<number>;
+  enterYear(prompt: ScreenText, start: number): Promise<number>;
 
   // Player & flow
   readonly player: ActorHandle;
@@ -341,7 +342,7 @@ export interface EraDef {
   /** Machine parts needed in this era (shown in the HUD). */
   parts: ItemId[];
   /** The current goal, shown in the pause menu so players never feel lost. */
-  objective(w: WorldApi): string;
+  objective(w: WorldApi): ScreenText;
   /**
    * Spawns everything in the era. May return a script that runs every time the
    * player arrives, so it can use handles created during setup.

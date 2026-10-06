@@ -1,4 +1,4 @@
-import { onLangChange, tr } from '../i18n/index.ts';
+import { onLangChange, t, type Text } from '../i18n/index.ts';
 import type { Action, HotbarRect, Input } from './input.ts';
 import { VIEW_W } from './screen.ts';
 
@@ -10,11 +10,11 @@ const STICK_RADIUS = 42;
 const STICK_DEADZONE = 0.12;
 
 /** Gamepad-style face buttons, lettered like the touch glyphs in `input.ts`. */
-const BUTTONS: Array<{ letter: string; caption: string; slot: string; actions: Action[] }> = [
-  { letter: 'A', caption: 'use', slot: 'a', actions: ['interact'] },
-  { letter: 'B', caption: 'sneak', slot: 'b', actions: ['sneak'] },
-  { letter: 'X', caption: 'item', slot: 'x', actions: ['throw'] },
-  { letter: 'Y', caption: 'swap', slot: 'y', actions: ['cycle'] },
+const BUTTONS: Array<{ letter: string; caption: Text; slot: string; actions: Action[] }> = [
+  { letter: 'A', caption: 'Use', slot: 'a', actions: ['interact'] },
+  { letter: 'B', caption: 'Sneak', slot: 'b', actions: ['sneak'] },
+  { letter: 'X', caption: 'Item', slot: 'x', actions: ['throw'] },
+  { letter: 'Y', caption: 'Swap', slot: 'y', actions: ['cycle'] },
 ];
 
 /**
@@ -55,7 +55,7 @@ export class TouchControls {
     zone.addEventListener('pointercancel', (e) => this.stickEnd(e));
 
     const pad = el('div', 'touch-pad');
-    const captions: Array<{ node: HTMLElement; text: string }> = [];
+    const captions: Array<{ node: HTMLElement; text: Text }> = [];
     for (const spec of BUTTONS) {
       const button = this.button(`touch-btn touch-${spec.slot}`, spec.actions);
       const caption = el('span', 'touch-caption');
@@ -67,7 +67,7 @@ export class TouchControls {
     const system = el('div', 'touch-system');
     const menu = this.button('touch-sys', ['pause', 'skip', 'back']);
     captions.push({ node: menu, text: 'Menu' });
-    const relabel = (): void => captions.forEach(({ node, text }) => (node.textContent = tr(text)));
+    const relabel = (): void => captions.forEach(({ node, text }) => (node.textContent = t(text)));
     relabel();
     onLangChange(relabel);
     system.append(menu);

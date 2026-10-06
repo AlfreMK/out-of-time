@@ -166,6 +166,8 @@ export const SCENES = {
     'Bien... desplazamiento temporal en 3...',
   'Andrew? These readings are all wrong... Abort! ABORT!':
     '¿Andrew? Estas lecturas están todas mal... ¡Aborta! ¡ABORTA!',
+  '...':
+    '...',
   'Ugh... my head...':
     'Uf... mi cabeza...',
   'Nora? Nora, do you copy?':

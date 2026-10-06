@@ -68,6 +68,8 @@ export const MEDIEVAL = {
     'Soy un... ¿erudito viajero?',
   'Zen go and travel somewhere else.':
     'Entoncez vete a viajar a otra parte.',
+  '...':
+    '...',
   'Master Albert teaches that dragons are only great serpents, and that we must trust what we observe over what we are told.':
     'El maestro Alberto enseña que los dragones son solo grandes serpientes, y que debemos confiar en lo que observamos más que en lo que nos dicen.',
   'I observe that you have a small dragon. He will want to see it.':

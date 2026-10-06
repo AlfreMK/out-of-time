@@ -3,7 +3,7 @@ import type { Input } from '../engine/input.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
 import { drawText, FONT_FAMILY, wrapText } from '../engine/text.ts';
 import type { Line } from '../eras/types.ts';
-import { speakerName, t, tr } from '../i18n/index.ts';
+import { speakerName, t, tr, type ScreenText } from '../i18n/index.ts';
 import { Speaker, type SpeakerName } from './speakers.ts';
 
 /** Rounded dark panel with a thin gold border, in logical UI units. */
@@ -54,7 +54,7 @@ export class DialogueBox {
   private wrapped: string[] | null = null;
   private blipTimer = 0;
   /** Called for every line shown (the journal), with the untranslated text. */
-  onLine: ((speaker: string | null, text: string) => void) | null = null;
+  onLine: ((speaker: string | null, text: ScreenText) => void) | null = null;
   /** Rewrites text before showing it (button glyphs). */
   format: (text: string) => string = (text) => text;
 
@@ -156,7 +156,7 @@ export class ChoiceMenu {
     return this.resolve !== null;
   }
 
-  open(prompt: string, options: string[]): Promise<number> {
+  open(prompt: ScreenText, options: ScreenText[]): Promise<number> {
     this.prompt = tr(prompt);
     this.options = options.map(tr);
     this.index = 0;
@@ -255,7 +255,7 @@ export class YearPicker {
     return this.resolve !== null;
   }
 
-  open(prompt: string, start: number): Promise<number> {
+  open(prompt: ScreenText, start: number): Promise<number> {
     this.prompt = tr(prompt);
     this.digits = String(Math.max(0, Math.min(9999, start))).padStart(4, '0').split('').map(Number);
     this.index = 0;

@@ -204,4 +204,12 @@ export const UI = {
     'el stick izquierdo',
   'the joystick on the left':
     'el joystick de la izquierda',
+  'Use':
+    'Usar',
+  'Sneak':
+    'Sigilo',
+  'Item':
+    'Objeto',
+  'Swap':
+    'Cambiar',
 } satisfies Record<UiText, string>;

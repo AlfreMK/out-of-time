@@ -6,7 +6,7 @@ import { goHome, pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { DecorKind, EraDef, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
-import { itemName, msg, tr } from '../i18n/index.ts';
+import { itemName, msg, tr, type Text } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['core'];
 
@@ -430,11 +430,11 @@ const EXHIBITS: Array<{ kind: DecorKind; lines: Line[] }> = [
  * The mineral hall's showcases, in reading order on the map. Real minerals, told apart by their shape:
  * quartz grows as six-sided columns ending in a point; beryl is six-sided too, but flat-topped.
  */
-const CRYSTALS: Array<{ kind: DecorKind; reveal: string; quartz?: boolean }> = [
+const CRYSTALS: Array<{ kind: DecorKind; quartz?: false; reveal: Text } | { kind: DecorKind; quartz: true }> = [
   { kind: 'crystal_calcite', reveal: 'Calcite: Iceland spar, it splits light in two.' },
   { kind: 'crystal_beryl', reveal: 'Six sides, but flat on top: beryl, an emerald cousin.' },
   { kind: 'crystal_pyrite', reveal: "Pyrite. Fool's gold." },
-  { kind: 'crystal_quartz', reveal: '', quartz: true },
+  { kind: 'crystal_quartz', quartz: true },
   { kind: 'crystal_fluorite', reveal: 'Fluorite: the mineral fluorescence was named after.' },
 ]
 

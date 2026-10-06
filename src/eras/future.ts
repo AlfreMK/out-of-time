@@ -3,10 +3,10 @@ import { FUTURE_TILES } from '../game/tiledefs.ts';
 import { FUTURE_MAP, FUTURE_MARKER_BASE } from './future-map.ts';
 import { ERA_INFO } from './info.ts';
 import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
-import type { EraDef, GateHandle, Line, WorldApi } from './types.ts';
+import type { Barks, EraDef, GateHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
-import { itemList, itemName, msg, tr } from '../i18n/index.ts';
+import { itemList, itemName, msg, tr, type Text } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['clock', 'tape'];
 
@@ -16,9 +16,9 @@ const DEPOT_CODE = 1925;
 const BOT_CAUGHT: Line[] = [[Speaker.SecurityBot, 'INTRUDER DETECTED. ESCORTING YOU TO THE EXIT.'], 'You are politely but firmly marched out of the building.'];
 const DRONE_CAUGHT: Line[] = [[Speaker.Drone, 'RESTRICTED AREA. LEAVE NOW OR AUTHORITIES WILL BE NOTIFIED.'], 'The drone herds you back out into the street.'];
 /** What a Chronos drone says when it starts to spot Andrew: a trespasser in a restricted district. */
-const DRONE_BARKS = { suspicious: ['UNAUTHORIZED PERSON?', 'NO ACCESS PASS DETECTED?', 'IDENTIFY YOURSELF.'] };
+const DRONE_BARKS = { suspicious: ['UNAUTHORIZED PERSON?', 'NO ACCESS PASS DETECTED?', 'IDENTIFY YOURSELF.'] } satisfies Partial<Barks>;
 /** With Pip along, they also notice the unregistered "bio-print" trotting behind him. */
-const DRONE_BARKS_PIP = { suspicious: [...DRONE_BARKS.suspicious, 'UNREGISTERED BIO-PRINT?', 'SPECIES NOT IN CATALOG?'] };
+const DRONE_BARKS_PIP = { suspicious: [...DRONE_BARKS.suspicious, 'UNREGISTERED BIO-PRINT?', 'SPECIES NOT IN CATALOG?'] } satisfies Partial<Barks>;
 
 const CAMERA_CAUGHT: Line[] = [[Speaker.Camera, 'UNAUTHORIZED PERSON DETECTED.'], 'An alarm wails. You slip away before security arrives.'];
 
@@ -50,7 +50,7 @@ export const FUTURE: EraDef = {
     if (!w.flag(progress.diagnosed('future'))) return 'Check the time machine.';
     if (!w.flag(Flag.FutMetYuki)) return 'Find a way into the Chronos Corp tower. Someone is hiding in the dark alley next to it.';
     if (!w.flag(progress.fixed('future'))) {
-      const steps: string[] = [];
+      const steps: Text[] = [];
       if (!w.flag(Flag.FutCanHack)) {
         if (w.has('deck')) steps.push('bring the cyberdeck back to Yuki');
         else steps.push(w.flag(Flag.FutDepotOpen) ? "get Yuki's cyberdeck from the maglev depot (splash through its doorway while a train roars past)" : 'the maglev depot door needs a four-digit code: someone in the plaza south of the canal may know it');
@@ -431,7 +431,7 @@ async function arrive(w: WorldApi, firstVisit: boolean): Promise<void> {
   if (!w.flag(progress.diagnosed('future'))) await diagnose(w);
 }
 
-async function hack(w: WorldApi, gate: GateHandle, label: string): Promise<void> {
+async function hack(w: WorldApi, gate: GateHandle, label: Text): Promise<void> {
   if (!w.flag(Flag.FutCanHack)) {
     w.sfx('error');
     await w.say(

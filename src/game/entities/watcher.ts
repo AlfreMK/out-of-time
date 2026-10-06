@@ -1,4 +1,5 @@
 import type { Barks, Facing, WatcherKind, WatcherSpec } from '../../eras/types.ts';
+import type { Text } from '../../i18n/index.ts';
 import { angleDiff } from '../../engine/random.ts';
 import { findPath, smoothPath } from '../pathfinding.ts';
 import { TILE, tileCenter, type TilePoint } from '../tilemap.ts';
@@ -128,7 +129,7 @@ export class Watcher extends Entity {
   /** A dormant watcher sleeping at its post (see `WatcherSpec.dormant`). */
   asleep = false;
   /** Current speech bubble. */
-  bark: { text: string; time: number } | null = null;
+  bark: { text: Text; time: number } | null = null;
   /** Who this watcher is chatting with right now (set by a `Chat`). */
   chatPartner: Watcher | null = null;
   /** Whether the current chat takes its eyes off the job. */
@@ -303,7 +304,7 @@ export class Watcher extends Entity {
   }
 
   /** Shows a line of a conversation in the speech bubble. */
-  speak(text: string, seconds: number): void {
+  speak(text: Text, seconds: number): void {
     this.bark = { text, time: seconds };
     this.barkCooldown = 1.2;
   }

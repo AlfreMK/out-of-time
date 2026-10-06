@@ -1,6 +1,7 @@
 import type { SfxName } from '../../engine/audio.ts';
 import type { CritterSpec, DecorKind, Facing, Line, ObstacleLook, Script, SignSpec, SleeperSpec } from '../../eras/types.ts';
-import { itemName, msg, speakerName } from '../../i18n/index.ts';
+import { itemName, msg, speakerName, verbatim, type Text } from '../../i18n/index.ts';
+import type { SpeakerName } from '../speakers.ts';
 import { ITEMS } from '../items.ts';
 import type { NpcLook } from '../looks.ts';
 import type { ItemId } from '../state.ts';
@@ -12,22 +13,24 @@ import { progress } from '../flags.ts';
 
 export class Npc extends Entity {
   readonly look: NpcLook;
+  readonly name: SpeakerName;
   readonly facing: Facing;
   private readonly talk: Script;
 
-  constructor(x: number, y: number, look: NpcLook, name: string, facing: Facing, talk: Script) {
+  constructor(x: number, y: number, look: NpcLook, name: SpeakerName, facing: Facing, talk: Script) {
     super();
     this.x = x;
     this.y = y;
     this.look = look;
     this.facing = facing;
     this.talk = talk;
+    this.name = name;
     this.solid = { hw: 5, hh: 4 };
-    this.interactLabel = name;
+    this.interactLabel = verbatim(name);
     this.height = look === 'kid' ? 15 : 19;
   }
   override promptLabel(): string {
-    return speakerName(this.interactLabel ?? '');
+    return speakerName(this.name);
   }
 
 
@@ -48,7 +51,7 @@ export class Pickup extends Entity {
     this.item = item;
     this.lines = lines;
     this.after = after;
-    this.interactLabel = ITEMS[item].name;
+    this.interactLabel = verbatim(ITEMS[item].name);
     this.height = 12;
   }
 
@@ -103,7 +106,7 @@ export class Machine extends Entity {
 export class Inspect extends Entity {
   private readonly onUse: Script;
 
-  constructor(x: number, y: number, label: string, onUse: Script) {
+  constructor(x: number, y: number, label: Text, onUse: Script) {
     super();
     this.x = x;
     this.y = y;
@@ -121,7 +124,7 @@ export class Obstacle extends Entity {
   readonly look: ObstacleLook;
   private readonly onUse: Script;
 
-  constructor(x: number, y: number, look: ObstacleLook, label: string, onUse: Script) {
+  constructor(x: number, y: number, look: ObstacleLook, label: Text, onUse: Script) {
     super();
     this.x = x;
     this.y = y;
@@ -167,21 +170,23 @@ export class Sleeper extends Entity {
 
 /** A friendly creature that follows the player along their trail. */
 export class Companion extends Entity {
+  readonly name: SpeakerName;
   following: boolean;
   moving = false;
   private readonly talk: Script;
 
-  constructor(x: number, y: number, name: string, following: boolean, talk: Script) {
+  constructor(x: number, y: number, name: SpeakerName, following: boolean, talk: Script) {
     super();
     this.x = x;
     this.y = y;
     this.following = following;
     this.talk = talk;
-    this.interactLabel = name;
+    this.name = name;
+    this.interactLabel = verbatim(name);
     this.height = 12;
   }
   override promptLabel(): string {
-    return speakerName(this.interactLabel ?? '');
+    return speakerName(this.name);
   }
 
 
@@ -391,21 +396,23 @@ export class Gate extends Entity {
 /** A hidden ally who makes a diversion when the player blows the pifilka nearby. */
 export class Ally extends Entity {
   readonly look: NpcLook;
+  readonly name: SpeakerName;
   /** Seconds before this ally can make another diversion. */
   cooldown = 0;
   private readonly talk: Script;
 
-  constructor(x: number, y: number, look: NpcLook, name: string, talk: Script) {
+  constructor(x: number, y: number, look: NpcLook, name: SpeakerName, talk: Script) {
     super();
     this.x = x;
     this.y = y;
     this.look = look;
     this.talk = talk;
-    this.interactLabel = name;
+    this.name = name;
+    this.interactLabel = verbatim(name);
     this.height = 19;
   }
   override promptLabel(): string {
-    return speakerName(this.interactLabel ?? '');
+    return speakerName(this.name);
   }
 
 

@@ -5,11 +5,14 @@
  * - **Text in the source** (dialogue, labels, objectives, barks) stays in English where it's written.
  *   `npm run i18n` collects it into the `…Text` types in `keys.ts`, and each dictionary is declared
  *   `satisfies Record<…Text, string>`, so a missing, misspelled or outdated entry fails the typecheck.
- *   Era scripts hand it over as plain strings and `tr()` translates it on its way to the screen (the
- *   journal stores the English, so switching language translates what's already written too); code
- *   that names a text directly uses `t()`, which only accepts a known one.
+ *   Everything that takes text for the screen (`WorldApi`, dialogue lines, barks, labels) is typed
+ *   `Text` or `ScreenText`, so English that isn't in `keys.ts` (a typo, or a change before
+ *   `npm run i18n`) fails the typecheck right where it's written. `tr()` translates it on its way to
+ *   the screen (the journal stores the English, so switching language translates what's already
+ *   written too); code that only draws it uses `t()`.
  * - **Text built from values** (`Got: Rye Bread`) comes from the `msg()` catalog in `messages.ts`:
- *   functions with named arguments, which every language implements with the same signatures.
+ *   functions with named arguments, which every language implements with the same signatures. What
+ *   they build is `Shown` (already translated), as is anything wrapped in `verbatim()`.
  * - **Names of things with an id** (items, characters, eras) come from `itemName()`, `speakerName()`
  *   and `eraInfo()`, translated in records keyed by those ids.
  */
@@ -21,6 +24,8 @@ import { ES } from './es/index.ts';
 import { ES_MESSAGES } from './es/messages.ts';
 import { ES_NAMES } from './es/names.ts';
 import type { Text } from './keys.ts';
+
+export type { Text };
 import { MESSAGES, type Messages } from './messages.ts';
 
 export type Lang = 'en' | 'es';
@@ -46,6 +51,25 @@ interface Language {
 const LANGUAGES: Partial<Record<Lang, Language>> = {
   es: { text: ES, messages: ES_MESSAGES, names: ES_NAMES },
 };
+
+declare const shown: unique symbol;
+
+/** Text already in the player's language (built by `msg()`), shown as is. */
+export type Shown = string & { readonly [shown]: true };
+
+/**
+ * Anything that goes on screen: English text from the source (`keys.ts`, translated on its way) or
+ * text already translated. A string that's neither, such as English with a typo, fails the typecheck.
+ */
+export type ScreenText = Text | Shown;
+
+/** Text shown exactly as given: names that are already translated (`eraInfo()`), or no language at all (glitched readouts). */
+export function verbatim(text: string): Shown {
+  return text as Shown;
+}
+
+/** The `msg()` catalog, marking what it builds as already translated. */
+type ShownMessages = { readonly [K in keyof Messages]: (...args: Parameters<Messages[K]>) => Shown };
 
 const STORAGE_KEY = 'out-of-time.lang';
 
@@ -81,10 +105,15 @@ export function onLangChange(listener: () => void): void {
   listeners.add(listener);
 }
 
-/** Translates text that arrives as a plain string (from an era script); anything unknown comes back as is. */
-export function tr(text: string): string {
+/** Translates text on its way to the screen; text already translated comes back as is. */
+export function tr(text: ScreenText): string {
   const dict: Readonly<Record<string, string>> | undefined = LANGUAGES[lang]?.text;
   return dict?.[text] ?? text;
+}
+
+/** Whether a string is one of the texts in `keys.ts` (every language has an entry for each one). */
+export function isText(value: string): value is Text {
+  return Object.hasOwn(ES, value);
 }
 
 /** Translates a text named in code: only text listed in `keys.ts` is accepted. */
@@ -93,8 +122,8 @@ export function t(text: Text): string {
 }
 
 /** The catalog of text built from values, in the current language. */
-export function msg(): Messages {
-  return LANGUAGES[lang]?.messages ?? MESSAGES;
+export function msg(): ShownMessages {
+  return (LANGUAGES[lang]?.messages ?? MESSAGES) as ShownMessages;
 }
 
 export function itemName(item: ItemId): string {

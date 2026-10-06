@@ -1,6 +1,6 @@
 import { ERA_IDS, type EraId } from '../game/state.ts';
 import { glitchText } from './info.ts';
-import { eraInfo, msg } from '../i18n/index.ts';
+import { eraInfo, msg, verbatim, type ScreenText } from '../i18n/index.ts';
 import type { CompanionHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, type FlagName, progress } from '../game/flags.ts';
@@ -41,13 +41,13 @@ export async function timeMachineMenu(w: WorldApi, hooks: MenuHooks = {}): Promi
   if (w.has('navmodule')) await installNavModule(w);
   if (w.has('emitter')) await installEmitter(w);
   const now = Date.now() / 1000;
-  const options: Array<{ label: string; run: () => Promise<void> }> = [];
+  const options: Array<{ label: ScreenText; run: () => Promise<void> }> = [];
   ERA_IDS.forEach((id, i) => {
     const info = eraInfo(id);
     const access = eraAccess(w, id);
     if (access === 'here') return;
     if (access === 'visited') {
-      options.push({ label: `${info.name}  ·  ${info.year}`, run: () => jump(w, id, hooks) });
+      options.push({ label: verbatim(`${info.name}  ·  ${info.year}`), run: () => jump(w, id, hooks) });
     } else if (access === 'detected') {
       options.push({
         label: msg().newWindow({ code: glitchText(9, now, i) }),
@@ -58,7 +58,7 @@ export async function timeMachineMenu(w: WorldApi, hooks: MenuHooks = {}): Promi
       });
     } else {
       options.push({
-        label: `${glitchText(9, now, i + 7)}  ·  ${glitchText(4, now, i + 3)}`,
+        label: verbatim(`${glitchText(9, now, i + 7)}  ·  ${glitchText(4, now, i + 3)}`),
         run: async () => {
           w.sfx('error');
           await w.say('NO STABLE WINDOW. These coordinates are still out of reach.');

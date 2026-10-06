@@ -1,4 +1,4 @@
-import { tr } from '../i18n/index.ts';
+import { isText, t, type Text } from '../i18n/index.ts';
 
 export type Action =
   | 'up'
@@ -62,7 +62,10 @@ const PAD_BUTTONS: Array<[number, Action[]]> = [
   [15, ['right']],
 ];
 
-const GLYPHS: Record<Device, Partial<Record<Action, string>>> = {
+/** Letters and symbols printed on keys and buttons, the same in every language (names like "Shift" are translated). */
+type ButtonSymbol = 'E' | 'F' | '1-3' | 'A' | 'B' | 'X' | 'Y' | 'LB' | 'LB/RB' | 'L1' | 'L1/R1' | '✕' | '○' | '□';
+
+const GLYPHS: Record<Device, Partial<Record<Action, Text | ButtonSymbol>>> = {
   // Items are picked with the number keys (Q steps to the next one).
   keyboard: { interact: 'E', sneak: 'Shift', throw: 'F', cycle: '1-3', pause: 'Esc', back: 'Esc' },
   xbox: { interact: 'A', sneak: 'B', throw: 'X', cycle: 'LB/RB', prev: 'LB', pause: 'Menu', back: 'B' },
@@ -72,7 +75,7 @@ const GLYPHS: Record<Device, Partial<Record<Action, string>>> = {
 };
 
 /** How movement is described in tutorial text ({move}). */
-const MOVE_HINT: Record<Device, string> = {
+const MOVE_HINT: Record<Device, Text> = {
   keyboard: 'WASD or the arrow keys',
   xbox: 'the left stick',
   playstation: 'the left stick',
@@ -274,14 +277,15 @@ export class Input {
 
   /** Label for an action's button on the current device, e.g. "E", "A" or "✕". */
   glyph(action: Action): string {
-    return tr(GLYPHS[this.device][action] ?? action);
+    const label = GLYPHS[this.device][action] ?? action;
+    return isText(label) ? t(label) : label;
   }
 
   /** Replaces {interact}, {sneak}, {throw}, {cycle} and {pause} with the current device's buttons, and {move} with its movement controls. */
   format(text: string): string {
     return text
       .replace(/\{(interact|sneak|throw|cycle|prev|pause|back)\}/g, (_, action: Action) => this.glyph(action))
-      .replace(/\{move\}/g, tr(MOVE_HINT[this.device]));
+      .replace(/\{move\}/g, t(MOVE_HINT[this.device]));
   }
 
   /** Registers a cheat code: typing these letters in a row (anywhere in the game) runs the callback. */

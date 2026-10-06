@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Line } from '../eras/types.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
-import { msg, t, tr } from '../i18n/index.ts';
+import { msg, t, type Text } from '../i18n/index.ts';
 import { drawText } from '../engine/text.ts';
 import type { Game, Scene } from '../game/game.ts';
 import { DialogueBox, drawPanel, Timers } from '../game/ui.ts';
@@ -36,7 +36,8 @@ export class IntroScene implements Scene {
   private fadeTarget = 1;
   private fadeSpeed = 1;
   private showError = false;
-  private caption: { title: string; subtitle: string } | null = null;
+  private caption: { title: Text; subtitle: Text } | null = null;
+  /** The countdown's digits, or a stunned '...': the same in every language. */
   private bigText = '';
 
   constructor(game: Game, onDone: () => void) {
@@ -228,10 +229,10 @@ export class IntroScene implements Scene {
 
     const ui = screen.ui;
     if (this.caption) {
-      drawText(ui, tr(this.caption.title), VIEW_W / 2, 74, { size: 12, bold: true, align: 'center', color: '#f4f1de' });
-      drawText(ui, tr(this.caption.subtitle), VIEW_W / 2, 92, { size: 7, align: 'center', color: '#7fd8ff' });
+      drawText(ui, t(this.caption.title), VIEW_W / 2, 74, { size: 12, bold: true, align: 'center', color: '#f4f1de' });
+      drawText(ui, t(this.caption.subtitle), VIEW_W / 2, 92, { size: 7, align: 'center', color: '#7fd8ff' });
     }
-    if (this.bigText) drawText(ui, tr(this.bigText), VIEW_W / 2, 70, { size: 22, bold: true, align: 'center', color: '#ffffff' });
+    if (this.bigText) drawText(ui, this.bigText, VIEW_W / 2, 70, { size: 22, bold: true, align: 'center', color: '#ffffff' });
     if (this.showError) this.drawError(screen, time);
     if (this.stage === 'title') {
       ui.fillStyle = 'rgba(0,0,0,0.35)';

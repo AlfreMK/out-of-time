@@ -6,7 +6,7 @@ import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { ActorHandle, EraDef, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
-import { itemList, itemName, msg, tr } from '../i18n/index.ts';
+import { itemList, itemName, msg, tr, type Text } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['gold', 'lodestone'];
 
@@ -44,7 +44,7 @@ export const ARAUCANIA: EraDef = {
           ? 'Bring the pali back to Ayelén: she will give you her pifilka.'
           : "Lautaro's scouts answer a pifilka. Ayelén has one, but first she wants her pali back: it landed in the quila south of the fort.";
       }
-      const tips: string[] = [];
+      const tips: Text[] = [];
       if (!w.has('gold')) tips.push("The gold is locked in an iron strongbox in the captain's house: Pip's skull could crack it.");
       if (!w.has('lodestone')) tips.push('A war dog guards the storehouse: toss it some of the rye bread from Cologne.');
       return msg().partsFromFort({ items: missing.map(itemName), tips: tips.map(tr) });
