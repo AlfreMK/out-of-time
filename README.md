@@ -165,3 +165,12 @@ The game is in English and Spanish (neutral Latin American; see `src/i18n/README
 - Development: `typescript`, `vite`, `@types/three`.
 - No secrets, accounts or network calls. The only storage is `localStorage` for saves, and saved data is validated (and migrated from older versions) before it's loaded.
 - Before deploying, check dependencies with `npm audit` (or enable Dependabot / Snyk on the repository).
+
+## License
+
+*Out of Time* is dual-licensed:
+
+- **Code:** [MIT](LICENSE). Use it, learn from it, reuse it.
+- **Content** (story, characters, dialogue, level layouts, the Spanish translation): [CC BY-NC-SA 4.0](LICENSE-CONTENT.md). Share and adapt it with credit, non-commercially, under the same license.
+
+Three.js is MIT-licensed; the build ships its notice in `third-party-licenses.md`.
