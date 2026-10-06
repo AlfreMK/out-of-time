@@ -323,11 +323,16 @@ export const PREHISTORY: EraDef = {
       once: Flag.PreForestHint,
       run: (w) => w.say([Speaker.Andrew, 'More raptors in the forest. Dromaeosaurs probably hunted with keen eyes and ears. Patience, Andrew.']),
     });
+    // The valley north of its entrance, close enough to have Pip on screen. The camera pans over to him.
     w.trigger({
-      area: 'L',
+      area: { x: 49, y: 19, w: 14, h: 9 },
       once: Flag.PreValleyHint,
       when: (w) => !w.flag(Flag.PipFriend),
-      run: (w) => w.say([Speaker.Andrew, 'A quiet valley, away from the raptors. And... something is whimpering up by the crater.']),
+      run: async (w) => {
+        w.lookAt('P');
+        await w.say([Speaker.Andrew, 'A quiet valley, away from the raptors. And... something is whimpering up by the crater.']);
+        w.lookAt(null);
+      },
     });
     w.trigger({
       area: 'T',

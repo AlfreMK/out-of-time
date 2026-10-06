@@ -260,6 +260,21 @@ function validate(def: EraDef): void {
       const [x, y] = key.split(',').map(Number);
       if (Math.hypot(x - pip.tx, y - pip.ty) < 8) fail(def.id, `a raptor lane passes too close to Pip (${x},${y})`);
     }
+    // The valley hint plays before the player reaches Pip, close enough to have him on screen.
+    const valley = rec.areas.filter((a) => a.once === Flag.PreValleyHint).map((a) => (typeof a.area === 'string' ? map.markerArea(a.area) : a.area));
+    const pastValley: Blocked = (tx, ty) => valley.some((r) => inRect(r, tx, ty));
+    const besidePip = [pip, { tx: pip.tx + 1, ty: pip.ty }, { tx: pip.tx - 1, ty: pip.ty }, { tx: pip.tx, ty: pip.ty + 1 }, { tx: pip.tx, ty: pip.ty - 1 }];
+    if (besidePip.some((p) => walkable(p.tx, p.ty) && !pastValley(p.tx, p.ty) && reachable(map, start, p, pastValley))) fail(def.id, 'Pip can be reached without the valley hint playing');
+    for (const r of valley) {
+      for (let y = r.y; y < r.y + r.h; y++) {
+        for (let x = r.x; x < r.x + r.w; x++) {
+          if (!walkable(x, y)) continue;
+          let entry = false;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (walkable(x + dx, y + dy) && !pastValley(x + dx, y + dy)) entry = true;
+          if (entry && (Math.abs(x - pip.tx) > 9 || Math.abs(y - pip.ty) > 6)) fail(def.id, `the valley hint at ${x},${y} plays before Pip is on screen`);
+        }
+      }
+    }
     // The south meadow's Anzu broods by the medicinal fern: getting to it means crossing the tiles it
     // always watches (whichever way its head sweeps), unless the birds' racket has pulled it away...
     const anzu = rec.routes.find((r) => r.kind === 'anzu');
