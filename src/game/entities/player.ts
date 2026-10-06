@@ -1,7 +1,8 @@
-import type { Facing } from '../../eras/types.ts';
+import { angleDiff } from '../../engine/random.ts';
 import { FACING_VECTORS, TILE } from '../tilemap.ts';
 import type { World } from '../world.ts';
 import { Entity } from './entity.ts';
+import { FACING_ANGLE } from './watcher.ts';
 
 const WALK_SPEED = 62;
 const SNEAK_SPEED = 30;
@@ -11,9 +12,19 @@ const CREEP_TILT = 0.55;
 export const STEP_NOISE = 36;
 const HOP_TIME = 0.42;
 const HOP_DISTANCE = 22;
+/** Keys turn Andrew to eight directions, 45° apart. */
+const OCTANT = Math.PI / 4;
+/**
+ * Letting go of a diagonal rarely releases both keys on the same frame: the facing waits this
+ * long before straightening, so stopping keeps the diagonal instead of snapping to the last key.
+ */
+const DIAGONAL_GRACE = 0.1;
+
+const isDiagonal = (angle: number): boolean => Math.abs(Math.round(angle / OCTANT)) % 2 === 1;
 
 export class Player extends Entity {
-  facing: Facing = 'down';
+  /** Where Andrew faces, in radians on the map (0 = east, π/2 = south). */
+  heading = FACING_ANGLE.down;
   sneaking = false;
   hidden = false;
   moving = false;
@@ -26,6 +37,8 @@ export class Player extends Entity {
   private stepTimer = 0;
   /** The tile under the player last frame, so stepping onto a noisy one always makes its noise. */
   private lastTile = '';
+  /** How long a diagonal has been waiting to straighten (see `DIAGONAL_GRACE`). */
+  private straightening = 0;
   readonly hw = 4;
   readonly hh = 3;
 
@@ -42,7 +55,7 @@ export class Player extends Entity {
     if (this.updateScriptedMove(dt)) {
       this.moving = true;
       const move = this.scriptedMove;
-      if (move) this.faceToward(move.x - this.x, move.y - this.y);
+      if (move && (move.x !== this.x || move.y !== this.y)) this.heading = Math.atan2(move.y - this.y, move.x - this.x);
       return;
     }
 
@@ -70,10 +83,11 @@ export class Player extends Entity {
     }
     if (tilt === 0) {
       this.stepTimer = Math.min(this.stepTimer, 0.1);
+      this.straightening = 0;
       return;
     }
 
-    this.faceToward(move.x, move.y);
+    this.turnToward({ move, dt });
     const speed = (this.sneaking ? SNEAK_SPEED : WALK_SPEED) * (world.game.godMode ? 2 : 1);
     const stepX = (move.x / tilt) * speed * dt;
     const stepY = (move.y / tilt) * speed * dt;
@@ -92,7 +106,7 @@ export class Player extends Entity {
       const toY = this.y + d.y * HOP_DISTANCE;
       if (!world.isBlocked(toX, toY, this.hw, this.hh, this)) {
         this.hop = { fromX: this.x, fromY: this.y, toX, toY, fromHeight: (world.map.defAt(this.x, this.y).height ?? 0) * TILE, t: 0 };
-        this.facing = ledge;
+        this.heading = FACING_ANGLE[ledge];
         world.game.audio.sfx('hop');
         return;
       }
@@ -138,20 +152,20 @@ export class Player extends Entity {
     }
   }
 
-  private faceToward(dx: number, dy: number): void {
-    // Keep the current facing when it still matches one of the pressed directions (smooth diagonals).
-    const matches =
-      (this.facing === 'left' && dx < 0) ||
-      (this.facing === 'right' && dx > 0) ||
-      (this.facing === 'up' && dy < 0) ||
-      (this.facing === 'down' && dy > 0);
-    if (matches && Math.abs(dx) > 0.2 && Math.abs(dy) > 0.2) return;
-    if (Math.abs(dx) > Math.abs(dy)) this.facing = dx < 0 ? 'left' : 'right';
-    else if (dy !== 0) this.facing = dy < 0 ? 'up' : 'down';
+  /** The stick turns Andrew freely; keys give the eight directions they press. */
+  private turnToward({ move, dt }: { move: { x: number; y: number; analog: boolean }; dt: number }): void {
+    const target = Math.atan2(move.y, move.x);
+    const letGoOfDiagonal = !move.analog && isDiagonal(this.heading) && !isDiagonal(target) && Math.abs(angleDiff(this.heading, target)) < OCTANT * 1.5;
+    if (letGoOfDiagonal && this.straightening < DIAGONAL_GRACE) {
+      this.straightening += dt;
+      return;
+    }
+    this.straightening = 0;
+    this.heading = target;
   }
 
   /** Unit vector of the facing direction. */
   get dir(): { x: number; y: number } {
-    return FACING_VECTORS[this.facing];
+    return { x: Math.cos(this.heading), y: Math.sin(this.heading) };
   }
 }

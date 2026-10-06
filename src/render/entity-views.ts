@@ -140,7 +140,7 @@ function playerView(player: Player, world: World): EntityView {
       const tileHeight = world.map.defAt(player.x, player.y).height ?? 0;
       lift = player.isHopping ? player.hopHeight / PX : lift + (tileHeight - lift) * Math.min(1, dt * 14);
       place(rig.root, player, lift);
-      turn(rig.root, FACING_YAW[player.facing], dt, 14);
+      turn(rig.root, yawFor(Math.cos(player.heading), Math.sin(player.heading)), dt, 14);
       rig.animate(time, player.moving ? (player.sneaking ? 0.55 : 1) : 0);
       rig.root.scale.y = player.sneaking ? 0.86 : 1;
       shield.visible = world.has('shield');
