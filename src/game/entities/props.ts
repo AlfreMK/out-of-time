@@ -1,5 +1,6 @@
 import type { SfxName } from '../../engine/audio.ts';
 import type { CritterSpec, DecorKind, Facing, Line, ObstacleLook, Script, SignSpec, SleeperSpec } from '../../eras/types.ts';
+import { itemName, msg, speakerName } from '../../i18n/index.ts';
 import { ITEMS } from '../items.ts';
 import type { NpcLook } from '../looks.ts';
 import type { ItemId } from '../state.ts';
@@ -25,6 +26,10 @@ export class Npc extends Entity {
     this.interactLabel = name;
     this.height = look === 'kid' ? 15 : 19;
   }
+  override promptLabel(): string {
+    return speakerName(this.interactLabel ?? '');
+  }
+
 
   override interact(world: World): Promise<void> | void {
     return this.talk(world);
@@ -43,8 +48,12 @@ export class Pickup extends Entity {
     this.item = item;
     this.lines = lines;
     this.after = after;
-    this.interactLabel = `Take ${ITEMS[item].name}`;
+    this.interactLabel = ITEMS[item].name;
     this.height = 12;
+  }
+
+  override promptLabel(): string {
+    return msg().takeItem({ item: itemName(this.item) });
   }
 
   override async interact(world: World): Promise<void> {
@@ -52,7 +61,7 @@ export class Pickup extends Entity {
     world.give(this.item);
     world.game.audio.sfx('pickup');
     world.burst(this.x, this.y, '#fff3a0', 14);
-    world.toast(`Got: ${ITEMS[this.item].name}`);
+    world.toast(msg().gotItem({ item: itemName(this.item) }));
     if (this.lines.length) await world.say(...this.lines);
     world.save();
     await this.after?.(world);
@@ -171,6 +180,10 @@ export class Companion extends Entity {
     this.interactLabel = name;
     this.height = 12;
   }
+  override promptLabel(): string {
+    return speakerName(this.interactLabel ?? '');
+  }
+
 
   override interact(world: World): Promise<void> | void {
     if (!this.following) return this.talk(world);
@@ -391,6 +404,10 @@ export class Ally extends Entity {
     this.interactLabel = name;
     this.height = 19;
   }
+  override promptLabel(): string {
+    return speakerName(this.interactLabel ?? '');
+  }
+
 
   override interact(world: World): Promise<void> | void {
     return this.talk(world);

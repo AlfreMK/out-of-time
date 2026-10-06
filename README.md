@@ -20,7 +20,8 @@ npm run dev        # http://localhost:5173
 | `npm run build` | Typecheck and build a static site into `dist/` (relative paths, host it anywhere). |
 | `npm run preview` | Serve the production build locally. |
 | `npm run typecheck` | Run the TypeScript compiler without emitting files. |
-| `npm run validate` | Check the level data: markers, walkable spawns, reachability, one-way ledges and puzzle gates. |
+| `npm run validate` | Check the level data (markers, walkable spawns, reachability, one-way ledges and puzzle gates) and that the translation keys are up to date. |
+| `npm run i18n` | Collect the English text in the source into `src/i18n/keys.ts`; the typecheck then lists any translation that's missing or outdated. |
 
 ## Deploying to GitHub Pages
 
@@ -38,11 +39,13 @@ Keyboard, gamepads (Xbox, PlayStation and other standard controllers) and touch 
 | Use selected item (hold to throw farther) | F | X or RT | □ or R2 | X |
 | Pick an item in the item bar | 1-3 / Q / mouse wheel | LB / RB (or Y) | L1 / R1 (or △) | Tap it in the bar (or Y) |
 | Pause (journal, goal, inventory) | Esc / P | Menu | Options | Menu |
-| Mute | M | | | Pause menu → Sound |
+| Mute | M | | | Pause menu → Settings → Sound |
 
 **Phones and tablets:** play in landscape (the game asks you to turn the phone sideways). On Android the ⛶ button goes fullscreen; on iPhone, *Share → Add to Home Screen* opens the game without the browser bars.
 
 **Saving:** progress is stored in the browser (`localStorage`) every time you reach a checkpoint, pick something up or finish a story beat. Besides each era's fixed checkpoints, any quiet spot out of reach of every patrol (and away from sleeping beasts) becomes one as you walk through it, so being caught never sends you back past an enemy you already slipped by. **Continue** on the title screen resumes from your last checkpoint.
+
+**Language:** English or Spanish, in **Settings** (title screen or pause menu). The choice is remembered in the browser.
 
 **Lost?** The pause menu shows your current goal and a **journal** with every line of dialogue so far (conversations repeated back to back show once). Scroll it with Up/Down (hold to keep going), page with Left/Right, or use the mouse wheel.
 
@@ -110,6 +113,8 @@ src/
     tilemap.ts            Grid, markers, collision, one-way ledges and line of sight
     state.ts              Inventory, flags, checkpoint and journal, with validated, versioned saves
     ui.ts                 Dialogue box, choice menu, year picker, panels
+    settings.ts           Settings panel: language (with flags) and sound
+  i18n/                   Languages: translation lookup, the generated text keys, text built from values, es/ dictionaries
   render/
     materials.ts          Toon (cel-shaded) materials, outlines, x-ray silhouette
     primitives.ts         Box/ball/cylinder helpers that every model is built from
@@ -127,6 +132,7 @@ src/
   scenes/                 Title, intro cinematic, time travel, ending
 scripts/
   validate-maps.ts        Level data checks (runs in plain Node)
+  i18n.ts                 Collects the game's English text into src/i18n/keys.ts and checks it's up to date
 ```
 
 ### Authoring levels
@@ -151,7 +157,7 @@ Everything is generated in code: there are no image, model or audio files. Chara
 
 ### A note on languages
 
-Andrew wears a translator earpiece, which explains why the guards in Cologne speak English with a heavy German accent (they're really speaking Middle High German). Spanish soldiers' speech bubbles stay in Spanish, and Mapudungun words (*mari mari*, *peñi*, *chaltu may*, *machi*, *ruka*, *foye*) are used where they fit.
+The game is in English and Spanish (neutral Latin American; see `src/i18n/README.md`). Andrew wears a translator earpiece, which explains why the villagers in Cologne speak English (or Spanish) with a heavy German accent (they're really speaking Middle High German). Spanish soldiers' speech bubbles stay in Spanish, and Mapudungun words (*mari mari*, *peñi*, *chaltu may*, *machi*, *ruka*, *foye*) are used where they fit.
 
 ## Dependencies and security
 

@@ -1,5 +1,6 @@
 import { ERA_IDS, type EraId } from '../game/state.ts';
-import { ERA_INFO, glitchText } from './info.ts';
+import { glitchText } from './info.ts';
+import { eraInfo, msg } from '../i18n/index.ts';
 import type { CompanionHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, type FlagName, progress } from '../game/flags.ts';
@@ -42,14 +43,14 @@ export async function timeMachineMenu(w: WorldApi, hooks: MenuHooks = {}): Promi
   const now = Date.now() / 1000;
   const options: Array<{ label: string; run: () => Promise<void> }> = [];
   ERA_IDS.forEach((id, i) => {
-    const info = ERA_INFO[id];
+    const info = eraInfo(id);
     const access = eraAccess(w, id);
     if (access === 'here') return;
     if (access === 'visited') {
       options.push({ label: `${info.name}  ·  ${info.year}`, run: () => jump(w, id, hooks) });
     } else if (access === 'detected') {
       options.push({
-        label: `${glitchText(9, now, i)}  ·  NEW WINDOW`,
+        label: msg().newWindow({ code: glitchText(9, now, i) }),
         run: async () => {
           await w.say('Unstable window detected. The destination will resolve on arrival.');
           await jump(w, id, hooks);
@@ -155,12 +156,12 @@ export async function goHome(w: WorldApi): Promise<void> {
         : year < 1990
           ? "That's long before the Institute even existed."
           : "Think, Andrew. In 2087 Yuki's leaked file said Test Run #47 was sixty-one years earlier. And Pike said Test Run #47 came seven years after his own, in 2019.";
-    await w.say(`ORIGIN YEAR ${year}: NO MATCH WITH THE DEPARTURE SIGNATURE.`, [Speaker.Andrew, hint]);
+    await w.say(msg().originMismatch({ year }), [Speaker.Andrew, hint]);
     return;
   }
   w.sfx('success');
   await w.say(
-    `ORIGIN YEAR ${year}: SIGNATURE MATCH.`,
+    msg().originMatch({ year }),
     [Speaker.Andrew, '2026. Home. Sixty seconds after I left, if the math holds.'],
     'Pike squeezes into the machine beside Andrew, his journal tucked under his arm.',
     [Speaker.Pike, 'Home, Ward. At last.'],

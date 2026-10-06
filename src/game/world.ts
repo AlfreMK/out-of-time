@@ -2,7 +2,6 @@ import type { MusicTheme, SfxName } from '../engine/audio.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
 import { clamp } from '../engine/random.ts';
 import { drawText, FONT_FAMILY, wrapText } from '../engine/text.ts';
-import { ERA_INFO } from '../eras/info.ts';
 import type {
   ActorHandle,
   AllySpec,
@@ -62,6 +61,9 @@ import { ERA_IDS, ITEM_IDS, withoutRepeats, type EraId, type ItemId } from './st
 import { TILE, TileMap, type TileRect, type TilePoint } from './tilemap.ts';
 import { ChoiceMenu, DialogueBox, drawPanel, speakerColor, Timers, YearPicker } from './ui.ts';
 import { eraFlags, Flag, progress, type FlagName } from './flags.ts';
+import { eraInfo, itemName, msg, speakerName, t, tr } from '../i18n/index.ts';
+import type { Text } from '../i18n/keys.ts';
+import { SettingsPanel } from './settings.ts';
 
 interface PixelRect {
   x: number;
@@ -140,7 +142,7 @@ const SAFE_FROM_SLEEPER = 80;
 const SAFE_SPACING = 48;
 /** How far the pifilka whistle carries to hidden allies. */
 const WHISTLE_RANGE = 170;
-type PauseOption = 'Resume' | 'Journal' | 'Sound' | 'Debug' | 'Quit to title';
+type PauseOption = 'Resume' | 'Journal' | 'Settings' | 'Debug' | 'Quit to title';
 
 const pointInRect = (x: number, y: number, r: PixelRect): boolean => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 
@@ -159,6 +161,7 @@ export class World implements Scene, WorldApi {
   readonly trail: Array<{ x: number; y: number }> = [];
   /** Where the camera looks instead of at the player, while a script shows something (`lookAt`). */
   cameraFocus: { x: number; y: number } | null = null;
+  private readonly settings = new SettingsPanel();
   private readonly view: WorldView;
   private entities: Entity[] = [];
   private readonly watchers: Watcher[] = [];
@@ -788,13 +791,17 @@ export class World implements Scene, WorldApi {
 
   /** The debug entry only appears while god mode is on. */
   private get pauseOptions(): PauseOption[] {
-    return this.game.godMode ? ['Resume', 'Journal', 'Sound', 'Debug', 'Quit to title'] : ['Resume', 'Journal', 'Sound', 'Quit to title'];
+    return this.game.godMode ? ['Resume', 'Journal', 'Settings', 'Debug', 'Quit to title'] : ['Resume', 'Journal', 'Settings', 'Quit to title'];
   }
 
   private updatePause(dt: number): void {
     const input = this.game.input;
     const PAUSE_OPTIONS = this.pauseOptions;
     this.pauseIndex = Math.min(this.pauseIndex, PAUSE_OPTIONS.length - 1);
+    if (this.settings.active) {
+      this.settings.update({ input, audio: this.game.audio });
+      return;
+    }
     if (this.journalOpen) {
       this.scrollJournal(dt);
       if (input.consume('back') || input.consume('pause') || input.consume('interact')) this.journalOpen = false;
@@ -816,7 +823,7 @@ export class World implements Scene, WorldApi {
       this.journalOpen = true;
       this.journalScroll = 0;
       this.journalRows = null;
-    } else if (option === 'Sound') this.game.audio.toggleMute();
+    } else if (option === 'Settings') this.settings.show();
     else if (option === 'Debug') {
       this.paused = false;
       void this.runScript(() => this.debugMenu());
@@ -847,7 +854,7 @@ export class World implements Scene, WorldApi {
       this.toast('All eras unlocked');
     } else if (pick === 2) {
       const eras = ERA_IDS.filter((era) => era !== this.def.id);
-      const choice = await this.choose('WARP TO', [...eras.map((era) => `${ERA_INFO[era].name}  ·  ${ERA_INFO[era].year}`), 'Cancel']);
+      const choice = await this.choose('WARP TO', [...eras.map((era) => `${eraInfo(era).name}  ·  ${eraInfo(era).year}`), 'Cancel']);
       if (choice < eras.length) {
         this.save();
         await this.travel(eras[choice]);
@@ -941,6 +948,7 @@ export class World implements Scene, WorldApi {
     if (this.paused) {
       if (this.journalOpen) this.drawJournal(screen);
       else this.drawPause(screen);
+      this.settings.draw({ screen, time: this.time, audio: this.game.audio });
     }
   }
 
@@ -980,7 +988,7 @@ export class World implements Scene, WorldApi {
   /** A speech bubble whose bottom row sits at `y`; long lines wrap onto more rows above it. */
   private drawBubble(screen: Screen, text: string, x: number, y: number, alpha: number, color = '#f4f1de'): void {
     const ui = screen.ui;
-    const lines = wrapText(ui, text, BUBBLE_WIDTH, 5.5);
+    const lines = wrapText(ui, tr(text), BUBBLE_WIDTH, 5.5);
     ui.font = `5.5px ${FONT_FAMILY}`;
     const w = Math.max(...lines.map((line) => ui.measureText(line).width)) + 8;
     const top = y - (lines.length - 1) * 6.5;
@@ -1017,7 +1025,7 @@ export class World implements Scene, WorldApi {
     if (!p.visible) return;
     const ui = screen.ui;
     const bob = Math.floor(time * 3) % 2;
-    const label = target.interactLabel;
+    const label = target.promptLabel();
     const key = this.game.input.glyph('interact');
     ui.font = `6px ${FONT_FAMILY}`;
     const keyW = Math.max(8, ui.measureText(key).width + 4);
@@ -1035,21 +1043,29 @@ export class World implements Scene, WorldApi {
 
   private drawHud(screen: Screen): void {
     const ui = screen.ui;
-    const info = ERA_INFO[this.def.id];
-    drawPanel(ui, 4, 4, 142, 21);
-    drawText(ui, `${info.name.toUpperCase()}  ·  ${info.year}`, 9, 7.5, { size: 6.5, color: '#f1c232', bold: true });
-    drawText(ui, info.place, 9, 16, { size: 5.5, color: '#9aa6bb' });
+    const info = eraInfo(this.def.id);
+    const title = `${info.name.toUpperCase()}  ·  ${info.year}`;
+    const place = info.place;
+    ui.font = `bold 6.5px ${FONT_FAMILY}`;
+    let panelW = ui.measureText(title).width;
+    ui.font = `5.5px ${FONT_FAMILY}`;
+    panelW = Math.max(142, panelW + 12, ui.measureText(place).width + 12);
+    drawPanel(ui, 4, 4, panelW, 21);
+    drawText(ui, title, 9, 7.5, { size: 6.5, color: '#f1c232', bold: true });
+    drawText(ui, place, 9, 16, { size: 5.5, color: '#9aa6bb' });
 
     this.drawParts(screen);
     this.drawTrain(screen);
 
     if (this.toastTime > 0 && this.toastText) {
-      const tw = Math.min(220, this.toastText.length * 5 + 16);
+      const toast = tr(this.toastText);
+      ui.font = `6.5px ${FONT_FAMILY}`;
+      const tw = Math.min(VIEW_W - 20, ui.measureText(toast).width + 16);
       const alpha = Math.min(1, this.toastTime * 3);
       ui.globalAlpha = alpha;
       drawPanel(ui, (VIEW_W - tw) / 2, 30, tw, 13);
       ui.globalAlpha = 1;
-      drawText(ui, this.toastText, VIEW_W / 2, 33, { size: 6.5, align: 'center', alpha });
+      drawText(ui, toast, VIEW_W / 2, 33, { size: 6.5, align: 'center', alpha });
     }
 
     if (this.dialogue.active || this.menu.active || this.yearPicker.active) return;
@@ -1057,13 +1073,13 @@ export class World implements Scene, WorldApi {
     if (this.game.godMode) {
       // Above the item bar.
       ui.font = `bold 6px ${FONT_FAMILY}`;
-      const w = ui.measureText('GOD MODE').width + 12;
+      const w = ui.measureText(t('GOD MODE')).width + 12;
       drawPanel(ui, (VIEW_W - w) / 2, VIEW_H - SLOT - 30, w, 13);
-      drawText(ui, 'GOD MODE', VIEW_W / 2, VIEW_H - SLOT - 26.5, { size: 6, align: 'center', bold: true, color: '#ff6bd6' });
+      drawText(ui, t('GOD MODE'), VIEW_W / 2, VIEW_H - SLOT - 26.5, { size: 6, align: 'center', bold: true, color: '#ff6bd6' });
     }
 
     if (this.hero.hidden || this.hero.sneaking) {
-      const label = this.hero.hidden ? 'HIDDEN' : 'SNEAKING';
+      const label = t(this.hero.hidden ? 'HIDDEN' : 'SNEAKING');
       drawPanel(ui, 4, VIEW_H - 18, 50, 14);
       drawText(ui, label, 29, VIEW_H - 14.5, { size: 6.5, align: 'center', bold: true, color: this.hero.hidden ? '#5aff8a' : '#7fd8ff' });
     }
@@ -1108,7 +1124,7 @@ export class World implements Scene, WorldApi {
     }
     // The selected item's name, for a moment after switching (and while winding up a throw).
     if (this.toolNameTime > 0 || this.throwCharge !== null) {
-      const name = ITEMS[options[selected]].name;
+      const name = itemName(options[selected]);
       ui.globalAlpha = this.throwCharge !== null ? 1 : Math.min(1, this.toolNameTime * 3);
       drawText(ui, name, VIEW_W / 2, y0 - 8, { size: 6, align: 'center', color: '#f4f1de' });
       ui.globalAlpha = 1;
@@ -1147,7 +1163,7 @@ export class World implements Scene, WorldApi {
     const x = 4;
     const y = 27;
     drawPanel(ui, x, y, w, 18);
-    let label = 'NEXT TRAIN';
+    let label: Text = 'NEXT TRAIN';
     let color = '#9aa6bb';
     let fill = train.progress;
     if (train.phase === 'approaching') {
@@ -1171,7 +1187,7 @@ export class World implements Scene, WorldApi {
     ui.fillRect(cx, cy + 4, 13, 1);
     ui.fillStyle = train.phase === 'away' ? '#555b66' : '#fff4c8';
     ui.fillRect(cx + 12, cy + 3, 1, 1);
-    drawText(ui, label, x + 22, y + 3, { size: 5.5, bold: true, color });
+    drawText(ui, t(label), x + 22, y + 3, { size: 5.5, bold: true, color });
     const barX = x + 22;
     const barW = w - 27;
     ui.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1187,13 +1203,16 @@ export class World implements Scene, WorldApi {
     if (parts.length === 0) return;
     const fixed = this.flag(progress.fixed(this.def.id));
     const diagnosed = fixed || this.flag(progress.diagnosed(this.def.id));
-    const w = 104;
+    const heading = t(fixed ? 'MACHINE REPAIRED' : 'MACHINE PARTS');
+    const lines = diagnosed ? parts.map(itemName) : [t('Check the time machine')];
+    ui.font = `5.5px ${FONT_FAMILY}`;
+    const w = Math.max(104, ...lines.map((line) => ui.measureText(line).width + (diagnosed ? 28 : 12)));
     const x0 = VIEW_W - w - 4;
     const h = diagnosed ? 13 + parts.length * 10 : 23;
     drawPanel(ui, x0, 4, w, h);
-    drawText(ui, fixed ? 'MACHINE REPAIRED' : 'MACHINE PARTS', x0 + 6, 7, { size: 5.5, bold: true, color: fixed ? '#5aff8a' : '#f1c232' });
+    drawText(ui, heading, x0 + 6, 7, { size: 5.5, bold: true, color: fixed ? '#5aff8a' : '#f1c232' });
     if (!diagnosed) {
-      drawText(ui, 'Check the time machine', x0 + 6, 15, { size: 5.5, color: '#9aa6bb' });
+      drawText(ui, lines[0], x0 + 6, 15, { size: 5.5, color: '#9aa6bb' });
       return;
     }
     parts.forEach((part, i) => {
@@ -1202,7 +1221,7 @@ export class World implements Scene, WorldApi {
       ui.fillStyle = '#1a1d2a';
       ui.fillRect(x0 + 5, y - 1, 9, 9);
       if (got) ui.drawImage(ITEM_SPRITES[part], x0 + 5.5, y - 0.5);
-      drawText(ui, ITEMS[part].name, x0 + 18, y, { size: 5.5, color: got ? '#5aff8a' : '#d8dceb' });
+      drawText(ui, lines[i], x0 + 18, y, { size: 5.5, color: got ? '#5aff8a' : '#d8dceb' });
       if (got) drawText(ui, '✓', x0 + w - 8, y, { size: 6, align: 'center', color: '#5aff8a', shadow: null });
     });
   }
@@ -1213,32 +1232,40 @@ export class World implements Scene, WorldApi {
     ui.fillStyle = 'rgba(0,0,0,0.55)';
     ui.fillRect(0, 0, VIEW_W, VIEW_H);
     drawPanel(ui, 20, 12, 280, 156, 0.95);
-    drawText(ui, 'PAUSED', VIEW_W / 2, 18, { size: 10, bold: true, align: 'center', color: '#f1c232' });
+    drawText(ui, t('PAUSED'), VIEW_W / 2, 18, { size: 10, bold: true, align: 'center', color: '#f1c232' });
 
-    drawText(ui, 'GOAL', 32, 32, { size: 6, bold: true, color: '#7fd8ff' });
-    wrapText(ui, this.def.objective(this), 250, 6.5).slice(0, 2).forEach((line, i) => {
-      drawText(ui, line, 56, 32 + i * 8, { size: 6.5, color: '#f4f1de' });
-    });
+    drawText(ui, t('GOAL'), 32, 32, { size: 6, bold: true, color: '#7fd8ff' });
+    // Two rows, or up to four in a smaller font (translated goals run longer); the menu moves down to make room.
+    const objective = tr(this.def.objective(this));
+    let goalSize = 6.5;
+    let goal = wrapText(ui, objective, 236, goalSize);
+    if (goal.length > 2) {
+      goalSize = 6;
+      goal = wrapText(ui, objective, 236, goalSize).slice(0, 4);
+    }
+    const goalRow = goal.length > 2 ? 6.8 : 8;
+    goal.forEach((line, i) => drawText(ui, line, 60, 32 + i * goalRow, { size: goalSize, color: '#f4f1de' }));
+    const menuY = Math.max(54, 32 + goal.length * goalRow + 3);
 
     this.pauseOptions.forEach((option, i) => {
-      const label = option === 'Sound' ? `Sound: ${this.game.audio.muted ? 'Off' : 'On'}` : option;
+      const label = t(option);
       const selected = i === this.pauseIndex;
-      drawText(ui, `${selected ? '>' : ' '} ${label}`, 32, 54 + i * 11, { color: selected ? '#ffffff' : '#9aa6bb' });
+      drawText(ui, `${selected ? '>' : ' '} ${label}`, 32, menuY + i * 11, { color: selected ? '#ffffff' : '#9aa6bb' });
     });
     const pad = input.device !== 'keyboard';
-    const moveWith = input.device === 'touch' ? 'Joystick (left)' : pad ? 'Left stick / D-pad' : 'WASD / Arrows';
+    const m = msg();
     const controls = [
-      `Move ........ ${moveWith}`,
-      `Interact .... ${input.glyph('interact')}${pad ? '' : ' / Space'}`,
-      `Sneak ....... Hold ${input.glyph('sneak')}${pad ? ' / tilt gently' : ''}`,
-      `Use item .... ${input.glyph('throw')} (hold: throw far)`,
-      `Switch item . ${input.glyph('cycle')}${input.device === 'touch' ? ' / tap it' : input.device === 'keyboard' ? ' / Q / wheel' : ''}`,
-      `Pause ....... ${input.glyph('pause')}`,
+      m.controlMove({ how: t(input.device === 'touch' ? 'Joystick (left)' : pad ? 'Left stick / D-pad' : 'WASD / Arrows') }),
+      m.controlInteract({ key: input.glyph('interact'), keyboard: !pad }),
+      m.controlSneak({ key: input.glyph('sneak'), pad }),
+      m.controlUse({ key: input.glyph('throw') }),
+      m.controlSwitch({ key: input.glyph('cycle'), device: input.device }),
+      m.controlPause({ key: input.glyph('pause') }),
     ];
-    controls.forEach((line, i) => drawText(ui, line, 150, 54 + i * 10, { size: 6.5, color: '#b8c4d8' }));
-    drawText(ui, 'INVENTORY', 32, 116, { size: 7, bold: true, color: '#f1c232' });
+    controls.forEach((line, i) => drawText(ui, line, 150, menuY + i * 10, { size: 6.5, color: '#b8c4d8' }));
+    drawText(ui, t('INVENTORY'), 32, 116, { size: 7, bold: true, color: '#f1c232' });
     const items = [...this.game.state.items];
-    if (items.length === 0) drawText(ui, '(empty)', 32, 127, { size: 6.5, color: '#55607a' });
+    if (items.length === 0) drawText(ui, t('(empty)'), 32, 127, { size: 6.5, color: '#55607a' });
     // Shrink the grid as the bag fills up, so it always fits inside the panel.
     const cols = items.length > 16 ? 5 : 4;
     const rows = Math.ceil(items.length / cols);
@@ -1248,7 +1275,7 @@ export class World implements Scene, WorldApi {
       const x = 32 + (i % cols) * colW;
       const y = 127 + Math.floor(i / cols) * rowH;
       ui.drawImage(ITEM_SPRITES[item], x, y);
-      drawText(ui, ITEMS[item].name, x + 11, y + 0.5, { size: cols === 4 ? 5.5 : 4.5 });
+      drawText(ui, itemName(item), x + 11, y + 0.5, { size: cols === 4 ? 5.5 : 4.5 });
     });
   }
 
@@ -1285,12 +1312,14 @@ export class World implements Scene, WorldApi {
     ui.fillStyle = 'rgba(0,0,0,0.6)';
     ui.fillRect(0, 0, VIEW_W, VIEW_H);
     drawPanel(ui, 16, 10, 288, 160, 0.96);
-    drawText(ui, 'JOURNAL', VIEW_W / 2, 15, { size: 9, bold: true, align: 'center', color: '#f1c232' });
+    drawText(ui, t('JOURNAL'), VIEW_W / 2, 15, { size: 9, bold: true, align: 'center', color: '#f1c232' });
 
     if (!this.journalRows) {
       const rows: JournalRow[] = [];
-      for (const [speaker, text] of withoutRepeats(this.game.state.log)) {
-        const prefix = speaker ? `${speaker}: ` : '';
+      for (const [speaker, raw] of withoutRepeats(this.game.state.log)) {
+        // The journal keeps the English: translated here, so it follows the language setting.
+        const text = this.game.input.format(tr(raw));
+        const prefix = speaker ? `${speakerName(speaker)}: ` : '';
         // Only the speaker's name takes their color; what they say is the same color on every line.
         const color = speaker ? '#f4f1de' : '#b8c4d8';
         wrapText(ui, prefix + text, 262, 6).forEach((line, i) => {
@@ -1315,7 +1344,7 @@ export class World implements Scene, WorldApi {
       }
       if (row.text) drawText(ui, row.text, x, y, { size: 6, color: row.color, shadow: null });
     });
-    if (rows.length === 0) drawText(ui, 'Nothing written yet.', VIEW_W / 2, 80, { size: 6.5, align: 'center', color: '#55607a' });
+    if (rows.length === 0) drawText(ui, t('Nothing written yet.'), VIEW_W / 2, 80, { size: 6.5, align: 'center', color: '#55607a' });
     if (maxScroll > 0) {
       // Scrollbar: where the visible lines sit in the whole journal.
       const trackY = 28;
@@ -1328,7 +1357,7 @@ export class World implements Scene, WorldApi {
       ui.fillRect(294, thumbY, 2, thumbH);
     }
     const input = this.game.input;
-    drawText(ui, `Up/Down scroll · Left/Right page · ${input.glyph('back')} close`, VIEW_W / 2, 161, { size: 5.5, align: 'center', color: '#9aa6bb' });
+    drawText(ui, msg().journalHelp({ key: input.glyph('back') }), VIEW_W / 2, 161, { size: 5.5, align: 'center', color: '#9aa6bb' });
   }
 
   // ---------------------------------------------------------------------------

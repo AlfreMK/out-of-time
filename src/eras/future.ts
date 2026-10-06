@@ -1,4 +1,3 @@
-import { ITEMS } from '../game/items.ts';
 import type { ItemId } from '../game/state.ts';
 import { FUTURE_TILES } from '../game/tiledefs.ts';
 import { FUTURE_MAP, FUTURE_MARKER_BASE } from './future-map.ts';
@@ -7,6 +6,7 @@ import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { EraDef, GateHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
+import { itemList, itemName, msg, tr } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['clock', 'tape'];
 
@@ -60,7 +60,7 @@ export const FUTURE: EraDef = {
         else steps.push(w.flag(Flag.FutBlastDoor) ? 'get the optical clock from the tower lab' : "a blast door is jammed behind the lab's laser: Pip's skull could move it");
       }
       if (!w.has('tape')) steps.push(w.flag(Flag.FutDepotOpen) ? 'get the superconducting tape from the maglev depot (avoid the puddles)' : 'get the superconducting tape from the maglev depot');
-      return steps.length ? `To do: ${steps.join('; ')}.` : 'Bring the parts back to the time machine.';
+      return steps.length ? msg().toDo({ steps: steps.map(tr) }) : 'Bring the parts back to the time machine.';
     }
     if (!w.flag(progress.got('notes'))) return 'Take the Power Cell to the sealed crypt in Cologne, 1248.';
     return 'Use the time machine to travel.';
@@ -444,7 +444,7 @@ async function hack(w: WorldApi, gate: GateHandle, label: string): Promise<void>
   await w.say([Speaker.Andrew, 'Institute multitool, meet Chronos Corp firmware...']);
   w.disable('tower', 20);
   if (!gate.isOpen) gate.open();
-  w.toast(`${label} unlocked · Cameras and bots offline for 20 s`);
+  w.toast(msg().hacked({ door: tr(label) }));
 }
 
 /** Yuki Tanaka: a hacker who leaked Chronos Corp's files, hiding in the alley by the tower. */
@@ -482,7 +482,7 @@ async function talkToYuki(w: WorldApi): Promise<void> {
     );
     w.give('powercell');
     w.sfx('pickup');
-    w.toast(`Got: ${ITEMS.powercell.name}`);
+    w.toast(msg().gotItem({ item: itemName('powercell') }));
     w.save();
     await w.say(
       [Speaker.Yuki, 'One more thing from the archives. In 2031 Chronos caught a single signal from an Institute beacon. From Cologne, in 1248.'],
@@ -527,7 +527,7 @@ async function useMachine(w: WorldApi): Promise<void> {
   if (!w.flag(progress.diagnosed('future'))) await diagnose(w);
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, msg().stillMissing({ items: itemList(missing) })]);
     return;
   }
   await w.say([Speaker.Andrew, 'Clock in, coils rewound... Moment of truth.']);

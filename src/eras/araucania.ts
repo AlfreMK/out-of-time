@@ -1,4 +1,3 @@
-import { ITEMS } from '../game/items.ts';
 import type { ItemId } from '../game/state.ts';
 import { ARAUCANIA_TILES } from '../game/tiledefs.ts';
 import { ARAUCANIA_MAP, ARAUCANIA_MARKER_BASE } from './araucania-map.ts';
@@ -7,6 +6,7 @@ import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { ActorHandle, EraDef, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
+import { itemList, itemName, msg, tr } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['gold', 'lodestone'];
 
@@ -37,7 +37,7 @@ export const ARAUCANIA: EraDef = {
     if (!w.flag(progress.diagnosed('araucania'))) return 'Check the time machine.';
     if (!w.flag(progress.fixed('araucania'))) {
       if (!w.flag(Flag.AraMet)) return 'Find the Mapuche camp in the forest to the north.';
-      const missing = PARTS.filter((p) => !w.has(p)).map((p) => ITEMS[p].name);
+      const missing = PARTS.filter((p) => !w.has(p));
       if (missing.length === 0) return 'Bring the parts back to the time machine.';
       if (!w.has('pifilka')) {
         return w.has('pali')
@@ -47,7 +47,7 @@ export const ARAUCANIA: EraDef = {
       const tips: string[] = [];
       if (!w.has('gold')) tips.push("The gold is locked in an iron strongbox in the captain's house: Pip's skull could crack it.");
       if (!w.has('lodestone')) tips.push('A war dog guards the storehouse: toss it some of the rye bread from Cologne.');
-      return `Get ${missing.join(' and ')} from Fort Tucapel. Blow the pifilka near the scouts to distract the soldiers. ${tips.join(' ')}`.trim();
+      return msg().partsFromFort({ items: missing.map(itemName), tips: tips.map(tr) });
     }
     if (!w.flag(progress.got('canelo'))) {
       if (w.has('maqui')) return 'Bring the maqui to the machi.';
@@ -369,7 +369,7 @@ async function talkToRayen(w: WorldApi): Promise<void> {
     await w.say(
       [Speaker.Rayen, 'You are going to the wingka fort? They keep a big war dog by the storehouse.'],
       [Speaker.Rayen, 'Dogs are dogs: give it something to eat and it forgets its job.'],
-      [Speaker.Andrew, 'I still have rye bread from Cologne. Seven centuries fresh... more or less.'],
+      [Speaker.Andrew, 'I still have rye bread from Cologne. Three centuries fresh... more or less.'],
     );
     return;
   }
@@ -399,7 +399,7 @@ async function talkToAyelen(w: WorldApi): Promise<void> {
   w.setFlag(Flag.AraPaliReturned);
   w.give('pifilka');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.pifilka.name}`);
+  w.toast(msg().gotItem({ item: itemName('pifilka') }));
   w.save();
   await w.say(
     [Speaker.Ayelen, 'Our pali! Chaltu may, peñi!'],
@@ -455,7 +455,7 @@ async function talkToMachi(w: WorldApi): Promise<void> {
   await w.say([Speaker.Machi, 'Good, good. This will help him heal.'], [Speaker.Machi, 'And for you: bark from the foye, our sacred tree. It heals the sickness that makes gums bleed and teeth fall out.']);
   w.give('canelo');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.canelo.name}`);
+  w.toast(msg().gotItem({ item: itemName('canelo') }));
   w.save();
   await w.say(
     [Speaker.Andrew, 'Scurvy. Foye bark is rich in vitamin C.'],
@@ -484,7 +484,7 @@ async function useMachine(w: WorldApi): Promise<void> {
   if (!w.flag(progress.diagnosed('araucania'))) await diagnose(w);
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, msg().stillMissing({ items: itemList(missing) })]);
     return;
   }
   await w.say([Speaker.Andrew, 'Gold contacts, lodestone reference... Here we go.']);

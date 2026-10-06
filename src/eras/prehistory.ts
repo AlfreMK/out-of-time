@@ -1,4 +1,3 @@
-import { ITEMS } from '../game/items.ts';
 import type { ItemId } from '../game/state.ts';
 import { PREHISTORY_TILES } from '../game/tiledefs.ts';
 import { ERA_INFO } from './info.ts';
@@ -7,6 +6,7 @@ import { timeMachineMenu } from './shared.ts';
 import type { CompanionHandle, EraDef, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
+import { itemList, itemName, msg } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['amber', 'obsidian', 'meteorite'];
 
@@ -43,15 +43,15 @@ export const PREHISTORY: EraDef = {
   objective(w) {
     if (!w.flag(progress.diagnosed('prehistory'))) return 'Check the damaged time machine.';
     if (!w.flag(progress.fixed('prehistory'))) {
-      const missing = PARTS.filter((p) => !w.has(p)).map((p) => ITEMS[p].name);
+      const missing = PARTS.filter((p) => !w.has(p));
       if (missing.length === 0) return 'Bring the parts back to the time machine.';
       if (w.flag(Flag.PipMet) && !w.flag(Flag.PipFriend) && !w.has('fern')) {
-        return `Find: ${missing.join(', ')}. Pip's wound needs the sharp-smelling fern by the Anzu's nest, at the south end of the meadow.`;
+        return msg().findPartsAndFern({ items: itemList(missing) });
       }
       if (!w.flag(Flag.PipFriend) && !w.has('meteorite')) {
-        return `Find: ${missing.join(', ')}. Something was whimpering in the valley past the east corridor.`;
+        return msg().findPartsAndPip({ items: itemList(missing) });
       }
-      return `Find: ${missing.join(', ')}.`;
+      return msg().findParts({ items: itemList(missing) });
     }
     if (w.flag(progress.fixed('medieval')) && !w.flag(progress.got('recorder'))) return 'Climb the rocky pass north of the forest, with the shield over your head. Something metallic glints at the top.';
     if (w.has('navmodule')) return "Install Pike's nav module in the time machine, and take Pip along.";
@@ -116,7 +116,7 @@ export const PREHISTORY: EraDef = {
         if (w.flag(Flag.SawPanel)) await w.say([Speaker.Andrew, 'That glowing panel in the crypt back in 1248... was that you, Pike?']);
         w.give('navmodule');
         w.sfx('pickup');
-        w.toast(`Got: ${ITEMS.navmodule.name}`);
+        w.toast(msg().gotItem({ item: itemName('navmodule') }));
         w.save();
         await w.say(
           'Wedged under the recorder: an Institute navigation module, scratched but intact.',
@@ -433,7 +433,7 @@ async function useMachine(w: WorldApi, pip: CompanionHandle): Promise<void> {
 
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, msg().stillMissing({ items: itemList(missing) })]);
     return;
   }
 

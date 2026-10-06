@@ -1,5 +1,6 @@
 import type { EmoteKind } from '../looks.ts';
 import type { World } from '../world.ts';
+import { tr } from '../../i18n/index.ts';
 
 export interface SolidBox {
   /** Half width / half height of the blocking box, centered on (x, y + offsetY). */
@@ -25,7 +26,7 @@ export abstract class Entity {
   y = 0;
   solid: SolidBox | null = null;
   removed = false;
-  /** When set, the player can interact with this entity and sees this label. */
+  /** When set, the player can interact with this entity and sees this label (see `promptLabel`). */
   interactLabel: string | null = null;
   /** Height of the character in map pixels, used to place emotes and prompts. */
   height = 18;
@@ -33,6 +34,11 @@ export abstract class Entity {
   /** Advances while the entity walks; drives walk cycles. */
   animTime = 0;
   protected scriptedMove: MoveTarget | null = null;
+
+  /** The interact label as the player reads it, in their language. */
+  promptLabel(): string {
+    return this.interactLabel ? tr(this.interactLabel) : '';
+  }
   private emoteKind: EmoteKind | null = null;
   private emoteTime = 0;
 

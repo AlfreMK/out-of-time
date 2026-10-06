@@ -1,3 +1,5 @@
+import { tr } from '../i18n/index.ts';
+
 export type Action =
   | 'up'
   | 'down'
@@ -272,14 +274,14 @@ export class Input {
 
   /** Label for an action's button on the current device, e.g. "E", "A" or "✕". */
   glyph(action: Action): string {
-    return GLYPHS[this.device][action] ?? action;
+    return tr(GLYPHS[this.device][action] ?? action);
   }
 
   /** Replaces {interact}, {sneak}, {throw}, {cycle} and {pause} with the current device's buttons, and {move} with its movement controls. */
   format(text: string): string {
     return text
       .replace(/\{(interact|sneak|throw|cycle|prev|pause|back)\}/g, (_, action: Action) => this.glyph(action))
-      .replace(/\{move\}/g, MOVE_HINT[this.device]);
+      .replace(/\{move\}/g, tr(MOVE_HINT[this.device]));
   }
 
   /** Registers a cheat code: typing these letters in a row (anywhere in the game) runs the callback. */

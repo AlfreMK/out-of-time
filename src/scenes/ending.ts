@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Line } from '../eras/types.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
+import { msg, t, tr } from '../i18n/index.ts';
 import { drawText, wrapText } from '../engine/text.ts';
 import { glitchText } from '../eras/info.ts';
 import type { Game, Scene } from '../game/game.ts';
@@ -295,11 +296,11 @@ export class EndingScene implements Scene {
       screen.render(this.stranded.scene, this.camera);
     } else if (this.stage === 'card') {
       screen.clear('#000000');
-      drawText(ui, 'TEST RUN #47', VIEW_W / 2, 58, { size: 9, align: 'center', bold: true, color: '#7fd8ff' });
-      drawText(ui, `STATUS: ${glitchText(8, time, 4)}`, VIEW_W / 2, 74, { size: 7, align: 'center', color: '#ff5050' });
-      drawText(ui, 'TO BE CONTINUED...', VIEW_W / 2, 100, { size: 16, align: 'center', bold: true, color: '#f4f1de' });
+      drawText(ui, t('TEST RUN #47'), VIEW_W / 2, 58, { size: 9, align: 'center', bold: true, color: '#7fd8ff' });
+      drawText(ui, msg().statusReadout({ value: glitchText(8, time, 4) }), VIEW_W / 2, 74, { size: 7, align: 'center', color: '#ff5050' });
+      drawText(ui, t('TO BE CONTINUED...'), VIEW_W / 2, 100, { size: 16, align: 'center', bold: true, color: '#f4f1de' });
       if (this.cardReady && Math.floor(time * 2) % 2 === 0) {
-        drawText(ui, `Press ${this.game.input.glyph('interact')}`, VIEW_W / 2, VIEW_H - 12, { size: 6.5, align: 'center', color: '#7fd8ff' });
+        drawText(ui, msg().pressKey({ key: this.game.input.glyph('interact') }), VIEW_W / 2, VIEW_H - 12, { size: 6.5, align: 'center', color: '#7fd8ff' });
       }
     } else {
       this.drawCredits(screen, time);
@@ -326,13 +327,13 @@ export class EndingScene implements Scene {
     let year = '2026';
     if (this.decoupled) year = glitchText(4, time, 11);
     else if (!settled) year = year.replace(/[0-9]/g, (d) => (Math.random() > this.stageTime / 3 ? String(Math.floor(Math.random() * 10)) : d));
-    drawText(ui, this.decoupled ? 'FIELD BREACH' : 'TEMPORAL JUMP IN PROGRESS', VIEW_W / 2, 24, {
+    drawText(ui, t(this.decoupled ? 'FIELD BREACH' : 'TEMPORAL JUMP IN PROGRESS'), VIEW_W / 2, 24, {
       size: 7,
       align: 'center',
       bold: true,
       color: this.decoupled && Math.floor(time * 4) % 2 === 0 ? '#ff5050' : '#7fd8ff',
     });
-    drawText(ui, year, VIEW_W / 2, 60, { size: 16, align: 'center', bold: true, color: this.decoupled ? '#ff5050' : settled ? '#f1c232' : '#ffffff' });
+    drawText(ui, tr(year), VIEW_W / 2, 60, { size: 16, align: 'center', bold: true, color: this.decoupled ? '#ff5050' : settled ? '#f1c232' : '#ffffff' });
   }
 
   private drawCredits(screen: Screen, time: number): void {
@@ -341,7 +342,7 @@ export class EndingScene implements Scene {
     const scroll = Math.max(0, this.creditsTime - 2) * 9;
     let y = 40 - scroll;
     const line = (text: string, size: number, color: string, gap: number): void => {
-      if (y > -20 && y < VIEW_H + 10) drawText(ui, text, VIEW_W / 2, y, { size, align: 'center', color });
+      if (y > -20 && y < VIEW_H + 10) drawText(ui, tr(text), VIEW_W / 2, y, { size, align: 'center', color });
       y += gap;
     };
     line('OUT OF TIME', 22, '#f4f1de', 34);
@@ -349,12 +350,12 @@ export class EndingScene implements Scene {
     line('Andrew Ward will return.', 7, '#9aa6bb', 26);
     line('HISTORICAL & SCIENTIFIC NOTES', 7, '#7fd8ff', 14);
     for (const note of NOTES) {
-      for (const text of wrapText(ui, note, 260, 6.5)) line(text, 6.5, '#d8dceb', 9);
+      for (const text of wrapText(ui, tr(note), 260, 6.5)) line(text, 6.5, '#d8dceb', 9);
       y += 8;
     }
     line('Made with TypeScript, Three.js and the Web Audio API.', 6.5, '#9aa6bb', 12);
     if (this.creditsTime > 3 && Math.floor(time * 2) % 2 === 0) {
-      drawText(ui, `Press ${this.game.input.glyph('interact')} to return to the title`, VIEW_W / 2, VIEW_H - 12, { size: 6.5, align: 'center', color: '#7fd8ff' });
+      drawText(ui, msg().pressKeyForTitle({ key: this.game.input.glyph('interact') }), VIEW_W / 2, VIEW_H - 12, { size: 6.5, align: 'center', color: '#7fd8ff' });
     }
   }
 }

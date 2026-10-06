@@ -1,4 +1,3 @@
-import { ITEMS } from '../game/items.ts';
 import type { ItemId } from '../game/state.ts';
 import { RUINS_TILES } from '../game/tiledefs.ts';
 import { ERA_INFO } from './info.ts';
@@ -7,6 +6,7 @@ import { goHome, pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { DecorKind, EraDef, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
+import { itemName, msg, tr } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['core'];
 
@@ -212,13 +212,13 @@ export const RUINS: EraDef = {
         w.sfx('alarm');
         w.shake(1.5, 0.5);
         w.alarm(170);
-        await w.say('DISPLAY BREACH. DISPLAY BREACH.', [Speaker.Andrew, `${crystal.reveal} Not quartz... and now everything in here knows where I am.`]);
+        await w.say('DISPLAY BREACH. DISPLAY BREACH.', [Speaker.Andrew, msg().notQuartz({ reveal: tr(crystal.reveal) })]);
         return;
       }
       specimens[index]?.remove();
       w.give('quartz');
       w.sfx('pickup');
-      w.toast(`Got: ${ITEMS.quartz.name}`);
+      w.toast(msg().gotItem({ item: itemName('quartz') }));
       w.save();
       await w.say(
         [Speaker.Andrew, 'A six-sided column that tapers to a point, and it scratches the glass. Quartz.'],
@@ -358,7 +358,7 @@ async function talkToPike(w: WorldApi): Promise<void> {
   }
   w.give('core');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.core.name}`);
+  w.toast(msg().gotItem({ item: itemName('core') }));
   w.save();
   await w.say(
     [Speaker.Pike, 'Take this. My temporal core, the only one outside the Institute. It lets the machine lock on to a single moment.'],
@@ -463,7 +463,7 @@ async function talkToNomad(w: WorldApi): Promise<void> {
   }
   w.give('water');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.water.name}`);
+  w.toast(msg().gotItem({ item: itemName('water') }));
   w.save();
   await w.say(
     [Speaker.Andrew, 'Rye bread? From... far away.'],

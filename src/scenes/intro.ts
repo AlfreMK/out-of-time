@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Line } from '../eras/types.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
+import { msg, t, tr } from '../i18n/index.ts';
 import { drawText } from '../engine/text.ts';
 import type { Game, Scene } from '../game/game.ts';
 import { DialogueBox, drawPanel, Timers } from '../game/ui.ts';
@@ -227,16 +228,16 @@ export class IntroScene implements Scene {
 
     const ui = screen.ui;
     if (this.caption) {
-      drawText(ui, this.caption.title, VIEW_W / 2, 74, { size: 12, bold: true, align: 'center', color: '#f4f1de' });
-      drawText(ui, this.caption.subtitle, VIEW_W / 2, 92, { size: 7, align: 'center', color: '#7fd8ff' });
+      drawText(ui, tr(this.caption.title), VIEW_W / 2, 74, { size: 12, bold: true, align: 'center', color: '#f4f1de' });
+      drawText(ui, tr(this.caption.subtitle), VIEW_W / 2, 92, { size: 7, align: 'center', color: '#7fd8ff' });
     }
-    if (this.bigText) drawText(ui, this.bigText, VIEW_W / 2, 70, { size: 22, bold: true, align: 'center', color: '#ffffff' });
+    if (this.bigText) drawText(ui, tr(this.bigText), VIEW_W / 2, 70, { size: 22, bold: true, align: 'center', color: '#ffffff' });
     if (this.showError) this.drawError(screen, time);
     if (this.stage === 'title') {
       ui.fillStyle = 'rgba(0,0,0,0.35)';
       ui.fillRect(0, 0, VIEW_W, VIEW_H);
-      drawText(ui, 'OUT OF TIME', VIEW_W / 2, 64, { size: 24, bold: true, align: 'center', color: '#f4f1de' });
-      drawText(ui, 'A stealth adventure across time', VIEW_W / 2, 92, { size: 8, align: 'center', color: '#f1c232' });
+      drawText(ui, t('OUT OF TIME'), VIEW_W / 2, 64, { size: 24, bold: true, align: 'center', color: '#f4f1de' });
+      drawText(ui, t('A stealth adventure across time'), VIEW_W / 2, 92, { size: 8, align: 'center', color: '#f1c232' });
     }
 
     if (this.fade > 0) {
@@ -248,7 +249,7 @@ export class IntroScene implements Scene {
       ui.fillStyle = `rgba(255,255,255,${Math.min(1, this.flash)})`;
       ui.fillRect(0, 0, VIEW_W, VIEW_H);
     }
-    if (this.stage !== 'title') drawText(ui, `${this.game.input.glyph('pause')}: skip`, VIEW_W - 4, 4, { size: 5.5, align: 'right', color: 'rgba(255,255,255,0.5)' });
+    if (this.stage !== 'title') drawText(ui, msg().skip({ key: this.game.input.glyph('pause') }), VIEW_W - 4, 4, { size: 5.5, align: 'right', color: 'rgba(255,255,255,0.5)' });
   }
 
   private drawError(screen: Screen, time: number): void {
@@ -260,10 +261,10 @@ export class IntroScene implements Scene {
     ui.fillStyle = '#ff3b3b';
     ui.fillRect(x + 3, y + 3, w - 6, 0.8);
     const blink = Math.floor(time * 4) % 2 === 0;
-    drawText(ui, blink ? '!! TEMPORAL ERROR !!' : '   TEMPORAL ERROR   ', x + w / 2, y + 6, { size: 8, bold: true, align: 'center', color: '#ff5050' });
+    drawText(ui, t(blink ? '!! TEMPORAL ERROR !!' : '   TEMPORAL ERROR   '), x + w / 2, y + 6, { size: 8, bold: true, align: 'center', color: '#ff5050' });
     const scramble = (n: number): string => Array.from({ length: n }, () => (Math.random() < 0.7 ? '█' : '▓')).join('');
-    drawText(ui, `YEAR: ${scramble(10)}`, x + 12, y + 22, { size: 7, color: '#f4f1de' });
-    drawText(ui, `COORDINATES: ${scramble(6)}`, x + 12, y + 33, { size: 7, color: '#f4f1de' });
-    drawText(ui, 'STABILITY: 12%', x + 12, y + 44, { size: 7, color: '#ffd23f' });
+    drawText(ui, msg().yearReadout({ value: scramble(10) }), x + 12, y + 22, { size: 7, color: '#f4f1de' });
+    drawText(ui, msg().coordinatesReadout({ value: scramble(6) }), x + 12, y + 33, { size: 7, color: '#f4f1de' });
+    drawText(ui, t('STABILITY: 12%'), x + 12, y + 44, { size: 7, color: '#ffd23f' });
   }
 }

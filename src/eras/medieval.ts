@@ -1,4 +1,3 @@
-import { ITEMS } from '../game/items.ts';
 import type { ItemId } from '../game/state.ts';
 import { MEDIEVAL_TILES } from '../game/tiledefs.ts';
 import { ERA_INFO } from './info.ts';
@@ -7,6 +6,7 @@ import { pipAlong, pipReaction, timeMachineMenu } from './shared.ts';
 import type { EraDef, GateHandle, Line, WorldApi } from './types.ts';
 import { Speaker } from '../game/speakers.ts';
 import { Flag, progress } from '../game/flags.ts';
+import { itemList, itemName, msg, tr } from '../i18n/index.ts';
 
 const PARTS: ItemId[] = ['gear', 'quicksilver'];
 
@@ -56,7 +56,7 @@ export const MEDIEVAL: EraDef = {
         if (!w.has('pebbles')) steps.push(w.has('top') ? 'give Jakob back his spinning top' : 'find Jakob’s spinning top by the mill, deep in the forest south of the village');
         else steps.push('find the quicksilver in the castle tower');
       }
-      return steps.length ? `To do: ${steps.join('; ')}.` : 'Bring the parts back to the time machine.';
+      return steps.length ? msg().toDo({ steps: steps.map(tr) }) : 'Bring the parts back to the time machine.';
     }
     if (w.has('powercell') && !w.flag(progress.got('notes'))) {
       return w.flag(Flag.MedCryptOpen) ? "Search Pike's hideout behind the door in the chapel." : 'Power the strange panel on the chapel crypt with the Power Cell.';
@@ -349,7 +349,7 @@ export const MEDIEVAL: EraDef = {
       after: async (w) => {
         w.give('emitter');
         w.sfx('pickup');
-        w.toast(`Got: ${ITEMS.emitter.name}`);
+        w.toast(msg().gotItem({ item: itemName('emitter') }));
         w.save();
         await w.say(
           'Inside the crate, wrapped in a thermal blanket: a hand-wound coil in an Institute housing.',
@@ -411,7 +411,7 @@ async function talkToBaker(w: WorldApi): Promise<void> {
     await w.say([Speaker.Agnes, 'Here, fresh rye bread. I always bake more than zis village can eat.']);
     w.give('bread');
     w.sfx('pickup');
-    w.toast(`Got: ${ITEMS.bread.name}`);
+    w.toast(msg().gotItem({ item: itemName('bread') }));
     w.save();
     await w.say('Rye Bread: press {throw} to throw it in front of you, or hold {throw} to throw it farther. Animals love it. Switch items with {cycle}.');
     return;
@@ -461,7 +461,7 @@ async function talkToFounder(w: WorldApi): Promise<void> {
   await w.fadeIn(0.4);
   w.give('gear');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.gear.name}`);
+  w.toast(msg().gotItem({ item: itemName('gear') }));
   w.save();
   await w.say([Speaker.MeisterUlrich, "One bronze gear, cast and filed. Copper and tin, ze right mix. Mind ze edges, zey're still warm."]);
 }
@@ -504,7 +504,7 @@ async function talkToKid(w: WorldApi): Promise<void> {
   );
   w.give('pebbles');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.pebbles.name}`);
+  w.toast(msg().gotItem({ item: itemName('pebbles') }));
   w.save();
   await w.say(
     'Pebbles: press {throw} to throw one in front of you, or hold {throw} to throw it farther. Guards walk over to check out the noise.',
@@ -555,7 +555,7 @@ async function talkToAlbert(w: WorldApi): Promise<void> {
   );
   w.give('quicksilver');
   w.sfx('pickup');
-  w.toast(`Got: ${ITEMS.quicksilver.name}`);
+  w.toast(msg().gotItem({ item: itemName('quicksilver') }));
   await soundTheAlarm(w);
 }
 
@@ -620,7 +620,7 @@ async function useMachine(w: WorldApi): Promise<void> {
 
   const missing = PARTS.filter((part) => !w.has(part));
   if (missing.length > 0) {
-    await w.say([Speaker.Andrew, `Still missing: ${missing.map((part) => ITEMS[part].name).join(', ')}.`]);
+    await w.say([Speaker.Andrew, msg().stillMissing({ items: itemList(missing) })]);
     return;
   }
 

@@ -1,3 +1,4 @@
+import { onLangChange, tr } from '../i18n/index.ts';
 import type { Action, HotbarRect, Input } from './input.ts';
 import { VIEW_W } from './screen.ts';
 
@@ -54,15 +55,21 @@ export class TouchControls {
     zone.addEventListener('pointercancel', (e) => this.stickEnd(e));
 
     const pad = el('div', 'touch-pad');
+    const captions: Array<{ node: HTMLElement; text: string }> = [];
     for (const spec of BUTTONS) {
       const button = this.button(`touch-btn touch-${spec.slot}`, spec.actions);
-      button.append(el('span', 'touch-letter', spec.letter), el('span', 'touch-caption', spec.caption));
+      const caption = el('span', 'touch-caption');
+      captions.push({ node: caption, text: spec.caption });
+      button.append(el('span', 'touch-letter', spec.letter), caption);
       pad.append(button);
     }
 
     const system = el('div', 'touch-system');
     const menu = this.button('touch-sys', ['pause', 'skip', 'back']);
-    menu.textContent = 'Menu';
+    captions.push({ node: menu, text: 'Menu' });
+    const relabel = (): void => captions.forEach(({ node, text }) => (node.textContent = tr(text)));
+    relabel();
+    onLangChange(relabel);
     system.append(menu);
     if (document.fullscreenEnabled) {
       const full = el('button', 'touch-sys', '⛶');

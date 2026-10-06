@@ -3,6 +3,7 @@ import type { Input } from '../engine/input.ts';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
 import { drawText, FONT_FAMILY, wrapText } from '../engine/text.ts';
 import type { Line } from '../eras/types.ts';
+import { speakerName, t, tr } from '../i18n/index.ts';
 import { Speaker, type SpeakerName } from './speakers.ts';
 
 /** Rounded dark panel with a thin gold border, in logical UI units. */
@@ -19,9 +20,15 @@ export function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w
 }
 
 interface ParsedLine {
+  /** The speaker as written in the script (it picks the name's color). */
   speaker: string | null;
+  /** The speaker's name and the line, translated and with button glyphs filled in. */
+  name: string;
   text: string;
 }
+
+/** Rows of text that fit in the dialogue box; a longer line continues on another page. */
+const DIALOGUE_ROWS = 3;
 
 const SPEAKER_COLORS: Partial<Record<SpeakerName, string>> = {
   [Speaker.Andrew]: '#7fd8ff',
@@ -46,7 +53,7 @@ export class DialogueBox {
   private resolve: (() => void) | null = null;
   private wrapped: string[] | null = null;
   private blipTimer = 0;
-  /** Called for every line shown (the journal). */
+  /** Called for every line shown (the journal), with the untranslated text. */
   onLine: ((speaker: string | null, text: string) => void) | null = null;
   /** Rewrites text before showing it (button glyphs). */
   format: (text: string) => string = (text) => text;
@@ -56,10 +63,14 @@ export class DialogueBox {
   }
 
   open(lines: Line[]): Promise<void> {
-    this.lines = lines.map((line) =>
-      typeof line === 'string' ? { speaker: null, text: this.format(line) } : { speaker: line[0], text: this.format(line[1]) },
-    );
-    for (const line of this.lines) this.onLine?.(line.speaker, line.text);
+    for (const line of lines) {
+      if (typeof line === 'string') this.onLine?.(null, line);
+      else this.onLine?.(line[0], line[1]);
+    }
+    this.lines = lines.map((line) => {
+      const [speaker, text] = typeof line === 'string' ? [null, line] : line;
+      return { speaker, name: speaker ? speakerName(speaker) : '', text: this.format(tr(text)) };
+    });
     this.index = 0;
     this.shown = 0;
     this.wrapped = null;
@@ -104,10 +115,19 @@ export class DialogueBox {
     drawPanel(screen.ui, x, y, w, 44);
     if (line.speaker) {
       const color = speakerColor(line.speaker);
-      drawPanel(screen.ui, x + 6, y - 8, Math.min(120, line.speaker.length * 5 + 10), 12, 1);
-      drawText(screen.ui, line.speaker, x + 11, y - 6, { color, bold: true });
+      drawPanel(screen.ui, x + 6, y - 8, Math.min(120, line.name.length * 5 + 10), 12, 1);
+      drawText(screen.ui, line.name, x + 11, y - 6, { color, bold: true });
     }
-    this.wrapped ??= wrapText(screen.ui, line.text, w - 16);
+    if (!this.wrapped) {
+      this.wrapped = wrapText(screen.ui, line.text, w - 16);
+      // Too long for the box (translations run longer): the rest becomes the next page, same speaker.
+      if (this.wrapped.length > DIALOGUE_ROWS) {
+        const rest = this.wrapped.slice(DIALOGUE_ROWS).join(' ');
+        this.wrapped = this.wrapped.slice(0, DIALOGUE_ROWS);
+        line.text = this.wrapped.join(' ');
+        this.lines.splice(this.index + 1, 0, { ...line, text: rest });
+      }
+    }
     let remaining = Math.floor(this.shown);
     this.wrapped.forEach((text, i) => {
       const visible = text.slice(0, Math.max(0, remaining));
@@ -137,8 +157,8 @@ export class ChoiceMenu {
   }
 
   open(prompt: string, options: string[]): Promise<number> {
-    this.prompt = prompt;
-    this.options = options;
+    this.prompt = tr(prompt);
+    this.options = options.map(tr);
     this.index = 0;
     return new Promise((resolve) => {
       this.resolve = resolve;
@@ -236,7 +256,7 @@ export class YearPicker {
   }
 
   open(prompt: string, start: number): Promise<number> {
-    this.prompt = prompt;
+    this.prompt = tr(prompt);
     this.digits = String(Math.max(0, Math.min(9999, start))).padStart(4, '0').split('').map(Number);
     this.index = 0;
     return new Promise((resolve) => {
@@ -278,6 +298,6 @@ export class YearPicker {
         drawText(ui, '▼', dx + 7, y + 47, { size: 6, align: 'center', color: '#7fd8ff', shadow: null });
       }
     });
-    drawText(ui, 'Up/Down change · Left/Right move · Confirm', VIEW_W / 2, y + h - 10, { size: 5.5, align: 'center', color: '#9aa6bb' });
+    drawText(ui, t('Up/Down change · Left/Right move · Confirm'), VIEW_W / 2, y + h - 10, { size: 5.5, align: 'center', color: '#9aa6bb' });
   }
 }

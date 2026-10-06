@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { VIEW_H, VIEW_W, type Screen } from '../engine/screen.ts';
+import { eraInfo, msg, t } from '../i18n/index.ts';
 import { drawText } from '../engine/text.ts';
-import { ERA_INFO, glitchText } from '../eras/info.ts';
+import { glitchText } from '../eras/info.ts';
 import type { Game, Scene } from '../game/game.ts';
 import type { EraId } from '../game/state.ts';
 import { buildTunnelSet } from '../render/sets.ts';
@@ -53,19 +54,19 @@ export class TravelScene implements Scene {
 
     const ui = screen.ui;
     const progress = Math.min(1, this.t / (DURATION - 0.6));
-    const fromInfo = ERA_INFO[this.from];
-    const toInfo = ERA_INFO[this.to];
+    const fromInfo = eraInfo(this.from);
+    const toInfo = eraInfo(this.to);
     const settled = progress >= 1;
     let year: string;
     if (settled) year = toInfo.year;
     else if (progress < 0.3) year = scramble(fromInfo.year, progress);
     else year = this.known ? scramble(toInfo.year, progress) : glitchText(toInfo.year.length, time, 3);
-    drawText(ui, 'TEMPORAL JUMP IN PROGRESS', VIEW_W / 2, 24, { size: 7, align: 'center', color: '#7fd8ff', bold: true });
+    drawText(ui, t('TEMPORAL JUMP IN PROGRESS'), VIEW_W / 2, 24, { size: 7, align: 'center', color: '#7fd8ff', bold: true });
     drawText(ui, year, VIEW_W / 2, 118, { size: 16, align: 'center', bold: true, color: settled ? '#f1c232' : '#ffffff' });
     const name = settled ? `${toInfo.name.toUpperCase()}  ·  ${toInfo.place}` : this.known ? '· · ·' : glitchText(12, time, 9);
     drawText(ui, name, VIEW_W / 2, 140, { size: 8, align: 'center', color: '#f4f1de' });
     const warn = this.stability < 50 && Math.floor(time * 4) % 2 === 0;
-    drawText(ui, `STABILITY ${this.stability}%${this.stability < 50 ? '  ·  WARNING' : ''}`, VIEW_W / 2, VIEW_H - 16, {
+    drawText(ui, msg().stability({ percent: this.stability, warning: this.stability < 50 }), VIEW_W / 2, VIEW_H - 16, {
       size: 6.5,
       align: 'center',
       color: warn ? '#ff5050' : '#9aa6bb',
